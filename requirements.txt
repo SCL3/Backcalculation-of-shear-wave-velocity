@@ -1,0 +1,11 @@
+# pip install -r requirements.txt to run this file and download the requirements
+# Python version : 3.14
+
+torch
+torchvision
+tensorboard
+numpy
+pandas
+scipy
+matplotlib
+tqdm
