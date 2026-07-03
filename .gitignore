@@ -1,0 +1,3 @@
+*.pth
+training_data_5K/
+validation_results/
