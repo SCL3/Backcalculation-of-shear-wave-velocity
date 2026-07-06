@@ -6,11 +6,12 @@ import os
 from torch.utils.data import Dataset, DataLoader, random_split
 
 class MyDataset(Dataset):
-    def __init__(self, in_instances, in_channels, input_dir, output_dir=None):
+    def __init__(self, in_instances, in_channels, input_dir, output_dir=None, add_noise=False):
         self.input_files = [os.path.join(input_dir, f) for f in os.listdir(input_dir) if f.endswith('.mat')]
         self.input = input_dir
         self.in_instances = in_instances
         self.in_channels = in_channels
+        self.add_noise = add_noise   # placeholder for future data augmentation (Gaussian noise, truncation)
 
         # Only set up output files if not in test mode
         if output_dir is not None:
