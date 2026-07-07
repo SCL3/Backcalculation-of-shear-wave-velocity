@@ -1,4 +1,5 @@
 import torch
+# print(torch.cuda.is_available())  # Must be True
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -67,7 +68,6 @@ elif torch.cuda.is_available():
     device = torch.device("cuda")  # NVIDIA GPU
 else:
     device = torch.device("cpu")  # CPU fallback
-print("Device used :", device)
 
 data_folder = 'training_data_5K/dataset'
 in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
     train_ratio = 0.8
     batch_size = 8
-    num_epochs = 3 # 150
+    num_epochs = 200 # 150
     best_error = 999999
 
     # --- Split on indices instead of random_split (shared between both instances) so train/val cover the same files ---
@@ -203,38 +203,38 @@ if __name__ == "__main__":
             learning_rate=scheduler.get_last_lr()[0], epoch_duration_sec=epoch_duration,
             num_params=NUM_PARAMS, batch_size=batch_size, seed=SEED
         )
+        if is_best:
+            with torch.no_grad():  # No need to create a graph, so we use torch.no_grad() to save GPU ressources
+                idx = 0
+                for data in val_dataset:
+                    # Unpack all inputs and target
+                    *all_inputs, target = data
+                    # Add batch dimension and move to device
+                    all_inputs = [inp.unsqueeze(0).to(device) for inp in all_inputs]
+                    target = target.unsqueeze(0).to(device)
+                    # Forward pass with all inputs
+                    predict = model(*all_inputs)
 
-        with torch.no_grad():  # No need to create a graph, so we use torch.no_grad() to save GPU ressources
-            idx = 0
-            for data in val_dataset:
-                # Unpack all inputs and target
-                *all_inputs, target = data
-                # Add batch dimension and move to device
-                all_inputs = [inp.unsqueeze(0).to(device) for inp in all_inputs]
-                target = target.unsqueeze(0).to(device)
-                # Forward pass with all inputs
-                predict = model(*all_inputs)
-
-                if idx < 50:
-                    input_fvs = all_inputs[0].squeeze(0).cpu().detach() if len(all_inputs) > 0 else None
-                    input_fls = all_inputs[1].squeeze(0).cpu().detach() if len(all_inputs) > 1 else None
-                    input_x0 = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
-                    input_dx = all_inputs[3].flatten().cpu().detach() if len(all_inputs) > 3 else None
-                    input_Ch = all_inputs[4].flatten().cpu().detach() if len(all_inputs) > 4 else None
-                    save_prediction(
-                        input_fvs=input_fvs,
-                        input_fls=input_fls,
-                        predict=predict.squeeze(0).cpu().detach(),
-                        file_id=idx,
-                        folder_save_result=f'validation_results/{run_id}/epoch_{epoch}',
-                        input_x0=[input_x0[0]],
-                        input_dx=[input_dx[0]],
-                        input_Ch=[input_Ch[0]],
-                        target=target.squeeze(0).cpu().detach()
-                    )
-                else:
-                    break
-                idx += 1
+                    if idx < 20:
+                        input_fvs = all_inputs[0].squeeze(0).cpu().detach() if len(all_inputs) > 0 else None
+                        input_fls = all_inputs[1].squeeze(0).cpu().detach() if len(all_inputs) > 1 else None
+                        input_x0 = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
+                        input_dx = all_inputs[3].flatten().cpu().detach() if len(all_inputs) > 3 else None
+                        input_Ch = all_inputs[4].flatten().cpu().detach() if len(all_inputs) > 4 else None
+                        save_prediction(
+                            input_fvs=input_fvs,
+                            input_fls=input_fls,
+                            predict=predict.squeeze(0).cpu().detach(),
+                            file_id=idx,
+                            folder_save_result=f'validation_results/{run_id}/epoch_{epoch + 1}',
+                            input_x0=[input_x0[0]],
+                            input_dx=[input_dx[0]],
+                            input_Ch=[input_Ch[0]],
+                            target=target.squeeze(0).cpu().detach()
+                        )
+                    else:
+                        break
+                    idx += 1
 
     # --- Save model ---
     writer.close()

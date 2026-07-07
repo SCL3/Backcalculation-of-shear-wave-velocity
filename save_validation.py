@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use('Agg')  # Non interactive backend : avoid Tkinter init in DataLoader worker on Windows
+
 import matplotlib.pyplot as plt
 import numpy as np
 import csv
