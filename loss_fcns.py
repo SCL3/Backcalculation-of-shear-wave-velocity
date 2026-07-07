@@ -9,6 +9,47 @@ class RMSELoss(nn.Module):
         mse_loss = torch.mean((predicted - target) ** 2)
         return torch.sqrt(mse_loss)
 
+class RMSE_TV_Loss(nn.Module):
+    """
+    Classic RMSE + Total Variation (TV) regularization applied only
+    to the Vs part (per-layer velocities) of the predicted vector.
+
+    The predicted/target vector is structured like the other losses
+    in this file: [h_1, ..., h_nL, Vs_1, ..., Vs_nL, Vs_(nL+1)]
+    (nL thicknesses followed by nL+1 velocities, the last one being
+    the half-space).
+
+    TV penalizes the sum of absolute differences between consecutive
+    layer velocities: |Vs_i+1 - Vs_i|. Unlike a plain smoothing penalty,
+    the L1 norm on these differences pushes most differences toward zero
+    (merging sub-layers that don't correspond to a real transition) while
+    still allowing a few large differences (the real layer boundaries),
+    producing a reconstructed profile with sharp steps instead of small
+    noisy oscillations.
+
+    lam: weight of the TV term relative to RMSE. Needs empirical tuning
+         (start around 0.01-0.1; too large => flattened profile,
+         too small => back to the current noisy behavior).
+    """
+    def __init__(self, lam=0.05):
+        super().__init__()
+        self.lam = lam
+
+    def forward(self, predicted, target):
+        # Terme RMSE standard, identique à RMSELoss
+        rmse = torch.sqrt(torch.mean((predicted - target) ** 2))
+
+        # Terme TV calculé uniquement sur la partie Vs de la prédiction
+        batch_size, num_elements = predicted.shape
+        nL = (num_elements - 1) // 2
+        VsPred = predicted[:, nL:]  # shape (batch, nL + 1)
+
+        tv = torch.mean(torch.abs(VsPred[:, 1:] - VsPred[:, :-1]))
+
+        total_loss = rmse + self.lam * tv
+
+        return total_loss
+
 class EMD(nn.Module):
     def __init__(self):
         super(EMD, self).__init__()

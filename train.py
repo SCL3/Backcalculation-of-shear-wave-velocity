@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 
 from model import ModelCNN_fvs
-from loss_fcns import RMSELoss
+from loss_fcns import RMSELoss, RMSE_TV_Loss
 from Call_dataset import MyDataset
 from torch.utils.data import DataLoader, Subset
 from save_validation import save_prediction
@@ -42,7 +42,7 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 # --- Logging function ---
-def log_epoch_to_csv(log_path, run_id, model_name, run_started_at, epoch, num_epochs,
+def log_epoch_to_csv(log_path, run_id, model_name, criterion, run_started_at, epoch, num_epochs,
                       train_loss, val_loss, is_best, learning_rate,
                       epoch_duration_sec, num_params, batch_size, seed):
     file_exists = os.path.exists(log_path)
@@ -50,12 +50,12 @@ def log_epoch_to_csv(log_path, run_id, model_name, run_started_at, epoch, num_ep
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow([
-                "run_id", "model_name", "run_started_at", "epoch", "epoch_timestamp",
+                "run_id", "model_name", "criterion", "run_started_at", "epoch", "epoch_timestamp",
                 "train_loss", "val_loss", "is_best", "learning_rate",
                 "epoch_duration_sec", "num_params", "batch_size", "seed"
             ])
         writer.writerow([
-            run_id, model_name, run_started_at, f"{epoch + 1}/{num_epochs}",
+            run_id, model_name, criterion, run_started_at, f"{epoch + 1}/{num_epochs}",
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             f"{train_loss:.6f}", f"{val_loss:.6f}", is_best, f"{learning_rate:.8f}",
             f"{epoch_duration_sec:.2f}", num_params, batch_size, seed
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         add_noise=False)    # !!! validation must always stay clean/deterministic
 
     # --- Model hyperparameters --- (Use Optuna later on the best Model)
-    criterion = RMSELoss()
+    criterion = RMSE_TV_Loss(lam=0.05) #  RMSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
     train_ratio = 0.8
@@ -197,7 +197,7 @@ if __name__ == "__main__":
 
         # --- Log CSV : One line per epoch ---
         log_epoch_to_csv(
-            log_path=log_path, run_id=run_id, model_name=MODEL_NAME,
+            log_path=log_path, run_id=run_id, model_name=MODEL_NAME, criterion=criterion.__class__.__name__,
             run_started_at=run_started_at, epoch=epoch, num_epochs=num_epochs,
             train_loss=train_loss, val_loss=val_loss, is_best=is_best,
             learning_rate=scheduler.get_last_lr()[0], epoch_duration_sec=epoch_duration,
