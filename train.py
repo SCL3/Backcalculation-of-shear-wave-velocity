@@ -11,7 +11,7 @@ import csv
 import time
 from datetime import datetime
 
-from model import ModelCNN_fvs
+from model import ModelResNet50_fvs, ModelDenseNet121_fvs
 from loss_fcns import RMSELoss, RMSE_TV_Loss
 from Call_dataset import MyDataset
 from torch.utils.data import DataLoader, Subset
@@ -72,7 +72,7 @@ else:
 data_folder = 'training_data_5K/dataset'
 in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
 in_channels = 3
-model = ModelCNN_fvs(in_instances, in_channels).to(device)
+model = ModelDenseNet121_fvs(in_instances, in_channels).to(device)  # ModelResNet50_fvs
 MODEL_NAME = model.__class__.__name__   # For csv loging
 NUM_PARAMS = sum(p.numel() for p in model.parameters())  # For csv loging
 

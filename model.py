@@ -1,20 +1,19 @@
 import torch
 import torch.nn as nn
 from torchvision.models import resnet50, ResNet50_Weights, resnet101, ResNet101_Weights
+from torchvision.models import densenet121, DenseNet121_Weights
 
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # DL Architecture
-class ModelCNN_fvs(nn.Module):
+class _BaseModel_fvs(nn.Module):
+    """Shared fusion/prediction head for fvs backbones (base_model set by subclasses)."""
 
-    def __init__(self, in_instances, in_channels=1):
-        super(ModelCNN_fvs, self).__init__()
+    def __init__(self, in_instances, backbone_out_features=1000):
+        super().__init__()
         self.in_instances = in_instances
-
-        self.base_model = resnet50(weights=ResNet50_Weights.DEFAULT)
-        self.base_model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.base_model.fc = nn.Linear(in_features=2048, out_features=1000, bias=True)
+        self.base_model: nn.Module  # assigned by subclass __init__
 
         self.layout_feature_extractor = nn.Sequential(
             nn.Flatten(),
@@ -25,7 +24,7 @@ class ModelCNN_fvs(nn.Module):
             nn.Linear(512, 128),
         )
 
-        self.fusion = nn.Linear(1000 + 128, 1024)
+        self.fusion = nn.Linear(backbone_out_features + 128, 1024)
 
         # Prediction layers
         self.prediction = nn.Sequential(
@@ -54,6 +53,26 @@ class ModelCNN_fvs(nn.Module):
         out = self.prediction(x)
 
         return out
+
+
+class ModelResNet50_fvs(_BaseModel_fvs):
+
+    def __init__(self, in_instances, in_channels=1):
+        super().__init__(in_instances, backbone_out_features=1000)
+
+        self.base_model = resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.base_model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.base_model.fc = nn.Linear(in_features=2048, out_features=1000, bias=True)
+
+
+class ModelDenseNet121_fvs(_BaseModel_fvs):
+
+    def __init__(self, in_instances, in_channels=1):
+        super().__init__(in_instances, backbone_out_features=1000)
+
+        self.base_model = densenet121(weights=DenseNet121_Weights.DEFAULT)
+        self.base_model.features.conv0 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.base_model.classifier = nn.Linear(in_features=1024, out_features=1000, bias=True)
 
 if __name__ == '__main__':
     print()
