@@ -222,17 +222,30 @@ if __name__ == "__main__":
                         input_x0 = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
                         input_dx = all_inputs[3].flatten().cpu().detach() if len(all_inputs) > 3 else None
                         input_Ch = all_inputs[4].flatten().cpu().detach() if len(all_inputs) > 4 else None
-                        save_prediction(
-                            input_fvs=input_fvs,
-                            input_fls=input_fls,
-                            predict=predict.squeeze(0).cpu().detach(),
-                            file_id=idx,
-                            folder_save_result=f'validation_results/{run_id}/epoch_{epoch + 1}',
-                            input_x0=[input_x0[0]],
-                            input_dx=[input_dx[0]],
-                            input_Ch=[input_Ch[0]],
-                            target=target.squeeze(0).cpu().detach()
-                        )
+                        if epoch == 0:
+                            save_prediction(
+                                input_fvs=input_fvs,
+                                input_fls=input_fls,
+                                predict=predict.squeeze(0).cpu().detach(),
+                                file_id=idx,
+                                folder_save_result=f'validation_results/{run_id}/first_epoch',
+                                input_x0=[input_x0[0]],
+                                input_dx=[input_dx[0]],
+                                input_Ch=[input_Ch[0]],
+                                target=target.squeeze(0).cpu().detach()
+                            )
+                        else:
+                            save_prediction(
+                                input_fvs=input_fvs,
+                                input_fls=input_fls,
+                                predict=predict.squeeze(0).cpu().detach(),
+                                file_id=idx,
+                                folder_save_result=f'validation_results/{run_id}/best_epoch',
+                                input_x0=[input_x0[0]],
+                                input_dx=[input_dx[0]],
+                                input_Ch=[input_Ch[0]],
+                                target=target.squeeze(0).cpu().detach()
+                            )
                     else:
                         break
                     idx += 1
