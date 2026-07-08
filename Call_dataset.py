@@ -1,17 +1,19 @@
 import scipy.io
 import torch
+import numpy as np
 import pandas as pd
 import os
 
 from torch.utils.data import Dataset, DataLoader, random_split
 
 class MyDataset(Dataset):
-    def __init__(self, in_instances, in_channels, input_dir, output_dir=None, add_noise=False):
+    def __init__(self, in_instances, in_channels, input_dir, output_dir=None, add_noise=False, noise_std=0.02):
         self.input_files = [os.path.join(input_dir, f) for f in os.listdir(input_dir) if f.endswith('.mat')]
         self.input = input_dir
         self.in_instances = in_instances
         self.in_channels = in_channels
-        self.add_noise = add_noise   # placeholder for future data augmentation (Gaussian noise, truncation)
+        self.add_noise = add_noise
+        self.noise_std = noise_std  # std of Gaussian noise, relative to the normalized amplitude (max=1)
 
         # Only set up output files if not in test mode
         if output_dir is not None:
@@ -27,6 +29,14 @@ class MyDataset(Dataset):
             self.output_dir = None
             self.output_files = None
 
+    def _apply_gaussian_noise(self, amplitude):
+        """Simulate measurement noise on the amplitude spectrum. Left untouched (and
+        deterministic) when add_noise=False, so it is safe to call unconditionally."""
+        if not self.add_noise or self.noise_std <= 0:
+            return amplitude
+        noise = np.random.normal(0.0, self.noise_std, size=amplitude.shape).astype(amplitude.dtype)
+        return np.clip(amplitude + noise, 0.0, None)
+
     def __len__(self):
         return min(5000, len(self.input_files))
     def __getitem__(self, idx):
@@ -41,13 +51,15 @@ class MyDataset(Dataset):
 
         if self.in_channels==1:
             amplitude = fvs[-1]
+            amplitude = self._apply_gaussian_noise(amplitude)
             fvs[-1] = amplitude# / amplitude.max(axis=1, keepdims=True)
             main_input_tensor_fvs = torch.tensor(fvs[-1], dtype=torch.float32).unsqueeze(0)
         else:
             frequency, phase_velocity, amplitude = fvs[0], fvs[1], fvs[-1]
             fvs[0] = frequency# / frequency.max(axis=0, keepdims=True)
             fvs[1] = phase_velocity# / phase_velocity.max(axis=1, keepdims=True)
-            fvs[-1] = amplitude / amplitude.max(axis=1, keepdims=True)
+            amplitude = amplitude / amplitude.max(axis=1, keepdims=True)
+            fvs[-1] = self._apply_gaussian_noise(amplitude)
             main_input_tensor_fvs = torch.tensor(fvs, dtype=torch.float32)
             # main_input_tensor = torch.tensor([fvs[0], fvs[-1]], dtype=torch.float32)
         input_tensors.append(main_input_tensor_fvs)
@@ -55,13 +67,15 @@ class MyDataset(Dataset):
 
         if self.in_channels==1:
             amplitude = fls[-1]
+            amplitude = self._apply_gaussian_noise(amplitude)
             fls[-1] = amplitude# / amplitude.max(axis=1, keepdims=True)
             main_input_tensor_fls = torch.tensor(fls[-1], dtype=torch.float32).unsqueeze(0)
         else:
             frequency, phase_velocity, amplitude = fls[0], fls[1], fls[-1]
             fls[0] = frequency# / frequency.max(axis=0, keepdims=True)
             fls[1] = phase_velocity# / phase_velocity.max(axis=1, keepdims=True)
-            fls[-1] = amplitude / amplitude.max(axis=1, keepdims=True)
+            amplitude = amplitude / amplitude.max(axis=1, keepdims=True)
+            fls[-1] = self._apply_gaussian_noise(amplitude)
             main_input_tensor_fls = torch.tensor(fls, dtype=torch.float32)
         input_tensors.append(main_input_tensor_fls)
 

@@ -88,7 +88,8 @@ if __name__ == "__main__":
         in_channels,
         os.path.join(data_folder, 'input'),
         os.path.join(data_folder, 'output'),
-        add_noise=True)   # For later when it's going to be implemented
+        add_noise=True,
+        noise_std=0.02)
 
     val_dataset_raw = MyDataset(
         in_instances,
@@ -98,7 +99,7 @@ if __name__ == "__main__":
         add_noise=False)    # !!! validation must always stay clean/deterministic
 
     # --- Model hyperparameters --- (Use Optuna later on the best Model)
-    criterion = RMSE_TV_Loss(lam=0.05) #  RMSELoss()
+    criterion = RMSELoss() #  RMSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
     train_ratio = 0.8
@@ -124,7 +125,7 @@ if __name__ == "__main__":
         batch_size=batch_size,
         shuffle=True,
         num_workers=4,
-        # worker_init_fn=seed_worker,  # Ensures reproducible random augmentation (Gaussian noise, random truncation) across DataLoader workers.
+        worker_init_fn=seed_worker,  # Ensures reproducible random augmentation (Gaussian noise, random truncation) across DataLoader workers.
         generator=g,  # Ensures reproducible for batches shuffling
         pin_memory=True
     )
