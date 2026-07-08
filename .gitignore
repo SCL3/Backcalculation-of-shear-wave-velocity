@@ -1,2 +1,4 @@
 *.pth
 training_data_5K/
+.venv
+.claude
