@@ -330,7 +330,7 @@ def main(csv_path: str | Path,
     # Final summary table
     if len(all_stats) > 1:
         rec = pd.DataFrame(all_stats)[
-            ["run_id", "epochs_logged", "best_val_loss", "best_epoch",
+            ["run_id", "criterion", "epochs_logged", "best_val_loss", "best_epoch",
              "final_gap", "total_time_h"]]
         print("\nSummary:")
         print(rec.to_string(index=False,

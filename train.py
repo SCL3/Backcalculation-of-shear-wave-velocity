@@ -88,7 +88,7 @@ if __name__ == "__main__":
         in_channels,
         os.path.join(data_folder, 'input'),
         os.path.join(data_folder, 'output'),
-        add_noise=True,
+        add_noise=False,  # Try to see if adding noise can make the validation results better
         noise_std=0.02)
 
     val_dataset_raw = MyDataset(
