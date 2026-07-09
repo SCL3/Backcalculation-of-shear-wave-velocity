@@ -342,7 +342,7 @@ def main(csv_path: str | Path,
 if __name__ == "__main__":
     # -- Settings
     CSV_PATH   = "log.csv"   # path to the log file (relative to this script)
-    RUN_ID     = None        # e.g. "ModelCNN_fvs_20260707_032232", or None for all runs
+    RUN_ID     = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
     MIN_EPOCHS = 100           # ignore runs with fewer epochs (aborted tests)
     OUTDIR     = "figures"   # output directory for the figures
     # =========================================================================
