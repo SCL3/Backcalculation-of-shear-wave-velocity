@@ -135,6 +135,9 @@ def print_summary(stats: dict) -> None:
           if stats["num_params"] else f"  Model               : {stats['model']}")
     print(f"  Criterion           : {stats['criterion']}")
     print(f"  Logged epochs       : {stats['epochs_logged']}{planned}")
+    if stats["epochs_planned"] and stats["epochs_logged"] < stats["epochs_planned"]:
+        print(f"  [i] Run stopped at epoch {stats['epochs_logged']}/{stats['epochs_planned']} "
+              f"(early stopping or interrupted run — log.csv alone can't tell which).")
     print(f"  Best val loss       : {stats['best_val_loss']:.6f}  (epoch {stats['best_epoch']},"
           f" train={stats['train_at_best']:.6f})")
     print(f"  Final losses        : train={stats['final_train_loss']:.6f}"
@@ -341,10 +344,15 @@ def main(csv_path: str | Path,
 
 if __name__ == "__main__":
     # -- Settings
-    CSV_PATH   = "log.csv"   # path to the log file (relative to this script)
-    RUN_ID     = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
-    MIN_EPOCHS = 100           # ignore runs with fewer epochs (aborted tests)
-    OUTDIR     = "figures"   # output directory for the figures
+    CSV_PATH = "log.csv"   # path to the log file (relative to this script)
+    RUN_ID = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
+    MIN_EPOCHS = 10           # ignore runs with fewer epochs (aborted tests).
+    # Lowered from 100: with early_stopping_patience=25 in train.py, a legitimate
+    # run can now stop as early as ~epoch 26 — a threshold of 100 would silently
+    # filter those out along with actual aborted/crashed runs. Raise this back up
+    # if you disable early stopping (early_stopping_patience=0) and want to filter
+    # short test runs again.
+    OUTDIR = "figures"   # output directory for the figures
     # =========================================================================
 
     sys.exit(main(CSV_PATH, run_id=RUN_ID, min_epochs=MIN_EPOCHS, outdir=OUTDIR))
