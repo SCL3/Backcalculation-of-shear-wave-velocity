@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision.models import resnet50, ResNet50_Weights, resnet101, ResNet101_Weights
+from torchvision.models import resnet34, ResNet34_Weights, resnet50, ResNet50_Weights, resnet101, ResNet101_Weights
 from torchvision.models import densenet121, DenseNet121_Weights
 
 # Device configuration
@@ -65,6 +65,16 @@ class ModelResNet50_fvs(_BaseModel_fvs):
         self.base_model.fc = nn.Linear(in_features=2048, out_features=1000, bias=True)
 
 
+class ModelResNet34_fvs(_BaseModel_fvs):
+
+    def __init__(self, in_instances, in_channels=1):
+        super().__init__(in_instances, backbone_out_features=1000)
+
+        self.base_model = resnet34(weights=ResNet34_Weights.DEFAULT)
+        self.base_model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.base_model.fc = nn.Linear(in_features=512, out_features=1000, bias=True)
+
+
 class ModelDenseNet121_fvs(_BaseModel_fvs):
 
     def __init__(self, in_instances, in_channels=1):
@@ -73,6 +83,7 @@ class ModelDenseNet121_fvs(_BaseModel_fvs):
         self.base_model = densenet121(weights=DenseNet121_Weights.DEFAULT)
         self.base_model.features.conv0 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.base_model.classifier = nn.Linear(in_features=1024, out_features=1000, bias=True)
+
 
 if __name__ == '__main__':
     print()

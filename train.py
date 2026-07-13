@@ -11,7 +11,7 @@ import csv
 import time
 from datetime import datetime
 
-from model import ModelResNet50_fvs, ModelDenseNet121_fvs
+from model import ModelResNet34_fvs, ModelResNet50_fvs, ModelDenseNet121_fvs
 from loss_fcns import RMSELoss, RMSE_TV_Loss
 from Call_dataset import MyDataset
 from torch.utils.data import DataLoader, Subset
@@ -72,7 +72,7 @@ else:
 data_folder = 'training_data_5K/dataset'
 in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
 in_channels = 3
-model = ModelDenseNet121_fvs(in_instances, in_channels).to(device)  # ModelResNet50_fvs
+model = ModelDenseNet121_fvs(in_instances, in_channels).to(device)  # ModelResNet50_fvs, ModelResNet34_fvs
 MODEL_NAME = model.__class__.__name__   # For csv loging
 NUM_PARAMS = sum(p.numel() for p in model.parameters())  # For csv loging
 
@@ -216,7 +216,7 @@ if __name__ == "__main__":
                     # Forward pass with all inputs
                     predict = model(*all_inputs)
 
-                    if idx < 20:
+                    if idx < 30:
                         input_fvs = all_inputs[0].squeeze(0).cpu().detach() if len(all_inputs) > 0 else None
                         input_fls = all_inputs[1].squeeze(0).cpu().detach() if len(all_inputs) > 1 else None
                         input_x0 = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
