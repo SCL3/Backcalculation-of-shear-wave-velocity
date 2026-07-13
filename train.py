@@ -72,7 +72,7 @@ else:
 data_folder = 'training_data_5K/dataset'
 in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
 in_channels = 3
-model = ModelDenseNet121_fvs(in_instances, in_channels).to(device)  # ModelResNet50_fvs, ModelResNet34_fvs
+model = ModelResNet34_fvs(in_instances, in_channels).to(device)  # ModelResNet50_fvs, ModelResNet34_fvs
 MODEL_NAME = model.__class__.__name__   # For csv loging
 NUM_PARAMS = sum(p.numel() for p in model.parameters())  # For csv loging
 
