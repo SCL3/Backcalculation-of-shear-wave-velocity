@@ -23,19 +23,20 @@ if __name__ == "__main__":
     Resnet50 = ModelResNet50_fvs(in_instances, in_channels)
     set_seed(seed)
     Resnet34 = ModelResNet34_fvs(in_instances, in_channels)
+    """
     set_seed(seed)
     Densenet121 = ModelDenseNet121_fvs(in_instances, in_channels)
     set_seed(seed)
     ModelSwinT = ModelSwinT_fvs(in_instances, in_channels)
     set_seed(seed)
     ModelEfficientNetB0 = ModelEfficientNetB0_fvs(in_instances, in_channels)
-
+    """
     models = [
         (Resnet50, "Resnet50_fvs"),
         (Resnet34, "Resnet34_fvs"),
-        (Densenet121, "Densenet121_fvs"),
-        (ModelSwinT, "ModelSwinT_fvs"),
-        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs"),
+        # (Densenet121, "Densenet121_fvs"),
+        # (ModelSwinT, "ModelSwinT_fvs"),
+        # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs"),
     ]
 
     # --- Run the training each model one after another ---
@@ -65,8 +66,8 @@ if __name__ == "__main__":
             model=model,
             model_name=model_name,
             log_path="log/RMSELoss_No_Noise/log_all_models.csv",
-            add_noise=False,
-            noise_std=0.02,
+            add_noise=True,
+            noise_std=0.05,  # Gotta test on 0.02, 0.05 and 0.1
             hyperparams=hyperparams,
             log_dir="runs",
         )
