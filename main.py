@@ -6,6 +6,11 @@ from model import ModelResNet34_fvs, ModelResNet50_fvs, ModelDenseNet121_fvs, Mo
 from loss_fcns import RMSELoss
 
 if __name__ == "__main__":
+    # --- Check if Cuda exists first ---
+    print(torch.__version__);
+    print(torch.cuda.is_available());
+    print(torch.cuda.get_device_name(0))
+
     # --- Shared settings for this batch of runs ---
     data_folder = 'training_data_5K/dataset'
     in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
@@ -59,7 +64,7 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="log/log_all_models.csv",
+            log_path="log/RMSELoss_No_Noise/log_all_models.csv",
             add_noise=False,
             noise_std=0.02,
             hyperparams=hyperparams,
