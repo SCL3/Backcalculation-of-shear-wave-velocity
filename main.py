@@ -67,7 +67,7 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="log/log_all_models.csv",
+            log_path="log/RMSELoss_Noise_std0,05/log_all_models.csv",
             add_noise=True,
             noise_std=0.05,  # Gotta test on 0.02, 0.05 and 0.1
             hyperparams=hyperparams,

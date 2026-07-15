@@ -344,7 +344,7 @@ def main(csv_path: str | Path,
 
 if __name__ == "__main__":
     # -- Settings
-    CSV_PATH = "log/RMSELoss_No_Noise/log_all_models.csv"  # path to the log file (relative to this script)
+    CSV_PATH = "log/RMSELoss_Noise_std0,05/log_all_models.csv"  # path to the log file (relative to this script)
     RUN_ID = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
     MIN_EPOCHS = 10           # ignore runs with fewer epochs (aborted tests).
     # Lowered from 100: with early_stopping_patience=25 in train.py, a legitimate

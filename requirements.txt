@@ -1,8 +1,16 @@
 # pip install -r requirements.txt to run this file and download the requirements
-# Python version : 3.14
 
+# --- CUDA-enabled torch / torchvision ---
+# 1. Run `nvidia-smi` and check the "CUDA Version" shown top-right.
+# 2. Get the exact, current command for your setup at:
+#    https://pytorch.org/get-started/locally  (OS: Windows, Package: pip, Compute: your CUDA version)
+# 3. Replace cu126 below if your driver needs a different CUDA version.
+# --extra-index-url (not --index-url): keeps regular PyPI as a source too, so
+# numpy/pandas/scipy/etc. below still resolve normally
+--extra-index-url https://download.pytorch.org/whl/cu126
 torch
 torchvision
+
 tensorboard
 numpy
 pandas
