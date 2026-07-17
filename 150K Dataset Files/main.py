@@ -7,13 +7,18 @@ from loss_fcns import RMSELoss
 
 if __name__ == "__main__":
     # --- Check if Cuda exists first ---
-    print(torch.__version__);
-    print(torch.cuda.is_available());
-    print(torch.cuda.get_device_name(0))
+    print(torch.__version__)
+    print(torch.cuda.is_available())
+    if torch.cuda.is_available():
+        print(torch.cuda.get_device_name(0))
+    else:
+        print("No CUDA GPU detected (train.py will fall back to MPS or CPU)")
 
     # --- Shared settings for this batch of runs ---
-    data_folder = 'training_data_5K/dataset'
-    in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
+    # data_folder = 'training_data_5K/dataset' 5K data
+    data_folder = r'C:\Users\KINH\training_data\dataset2'  # 150K data
+
+    in_instances = ['fvs', 'x0', 'dx', 'Ch']
     in_channels = 3
     seed = 42
 
@@ -37,7 +42,7 @@ if __name__ == "__main__":
     """
 
     models = [
-        (ModelCNN, "BASELINE_ModelCNN_fvs"),
+        (ModelCNN, "BASELINE_ModelCNN_fvs_150K"),
         #(Resnet50, "Resnet50_fvs"),
         #(Resnet34, "Resnet34_fvs"),
         #(Densenet121, "Densenet121_fvs"),
@@ -71,10 +76,10 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="log/RMSELoss_No_Noise/log_all_models.csv",
+            log_path="150K Dataset Files/log/RMSELoss_No_Noise/log_all_models.csv",
             add_noise=False,
             noise_std=0.05,  # Gotta test on 0.02, 0.05 and 0.1
             hyperparams=hyperparams,
-            log_dir="runs",
+            log_dir="150K Dataset Files/runs",
         )
         print(f"END TRAINING OF [{model_name}] -----------------")

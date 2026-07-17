@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from model import ModelResNet34_fvs, ModelResNet50_fvs, ModelDenseNet121_fvs, ModelSwinT_fvs, ModelEfficientNetB0_fvs
+from model import ModelCNN_fvs, ModelResNet34_fvs, ModelResNet50_fvs, ModelDenseNet121_fvs, ModelSwinT_fvs, ModelEfficientNetB0_fvs
 from loss_fcns import RMSELoss, RMSE_TV_Loss
 from Call_dataset import MyDataset
 from torch.utils.data import DataLoader, Subset
@@ -140,12 +140,12 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
     # !!! Two separate dataset instances (train & val), so data augmentation can differ between them
     train_dataset_raw = MyDataset(
         in_instances, in_channels,
-        os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output'),
+        os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output100'), # Adapted to Kinh 150K dataset
         add_noise=add_noise, noise_std=noise_std)
 
     val_dataset_raw = MyDataset(
         in_instances, in_channels,
-        os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output'),
+        os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output100'), # Adapted to Kinh 150K dataset
         add_noise=False)  # !!! validation must always stay clean/deterministic
 
     # --- Split on indices instead of random_split (shared between both instances) so train/val cover the same files ---
@@ -232,7 +232,8 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
         if is_best:
             best_error = val_loss
             epochs_without_improvement = 0
-            torch.save(model.state_dict(), f"saved_best_model_{run_id}.pth")
+            os.makedirs("150K Dataset Files/PTH", exist_ok=True)
+            torch.save(model.state_dict(), f"150K Dataset Files/PTH/saved_best_model_{run_id}.pth")
             print(f"[{run_id}] Save best model, error", val_loss)
         else:
             epochs_without_improvement += 1
@@ -262,16 +263,14 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
                     # Forward pass with all inputs
                     predict = model(*all_inputs)
 
-                    if idx < 30:
+                    if idx < 40:
                         input_fvs = all_inputs[0].squeeze(0).cpu().detach() if len(all_inputs) > 0 else None
-                        input_fls = all_inputs[1].squeeze(0).cpu().detach() if len(all_inputs) > 1 else None
-                        input_x0 = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
-                        input_dx = all_inputs[3].flatten().cpu().detach() if len(all_inputs) > 3 else None
-                        input_Ch = all_inputs[4].flatten().cpu().detach() if len(all_inputs) > 4 else None
-                        folder_save_result = f'validation_results/{run_id}/{"first_epoch" if epoch == 0 else "best_epoch"}'
+                        input_x0 = all_inputs[1].flatten().cpu().detach() if len(all_inputs) > 1 else None
+                        input_dx = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
+                        input_Ch = all_inputs[3].flatten().cpu().detach() if len(all_inputs) > 3 else None
+                        folder_save_result = f'150K Dataset Files/validation_results/{run_id}/{"first_epoch" if epoch == 0 else "best_epoch"}'
                         save_prediction(
                             input_fvs=input_fvs,
-                            input_fls=input_fls,
                             predict=predict.squeeze(0).cpu().detach(),
                             file_id=idx,
                             folder_save_result=folder_save_result,
@@ -298,8 +297,8 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
 
 if __name__ == "__main__":
     # --- Shared settings for this batch of runs ---
-    data_folder = 'training_data_5K/dataset'
-    in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
+    data_folder = r'C:\Users\KINH\training_data\dataset2'
+    in_instances = ['fvs', 'x0', 'dx', 'Ch']
     in_channels = 3
     seed = 42
 
@@ -307,6 +306,8 @@ if __name__ == "__main__":
     # Reseed right before each construction so every model's newly-added layers
     # (conv1, fc/classifier) are initialized from the same RNG state, regardless
     # of how many models are built before it or in what order.
+    set_seed(seed)
+    ModelCNN = ModelCNN_fvs(in_instances, in_channels)
     set_seed(seed)
     Resnet50 = ModelResNet50_fvs(in_instances, in_channels)
     set_seed(seed)
@@ -319,21 +320,22 @@ if __name__ == "__main__":
     ModelEfficientNetB0 = ModelEfficientNetB0_fvs(in_instances, in_channels)
 
     models = [
-        (Resnet50, "Resnet50_fvs"),
-        (Resnet34, "Resnet34_fvs"),
-        (Densenet121, "Densenet121_fvs"),
-        (ModelSwinT, "ModelSwinT_fvs"),
-        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs"),
+        (ModelCNN, "ModelCNN_fvs_No_Noise_150k"),
+        (Resnet50, "Resnet50_fvs_No_Noise_150k"),
+        (Resnet34, "Resnet34_fvs_No_Noise_150k"),
+        (Densenet121, "Densenet121_fvs_No_Noise_150k"),
+        (ModelSwinT, "ModelSwinT_fvs_No_Noise_150k"),
+        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_No_Noise_150k"),
     ]
 
     # --- Run the training each model one after another ---
     for model, model_name in models:
         optimizer = optim.Adam(model.parameters(), lr=0.0001)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)  # !!! Step size 20 instead of 30 (Kinh)
 
         # --- Hyperparameters ---
         hyperparams = [
-            RMSELoss(),  # loss function
+            RMSELoss(),  # loss function  !!! RMSELoss Instead of MAELoss() (for later)
             optimizer,  # optimizer bound to this model's parameters
             scheduler,  # LR scheduler bound to the optimizer above
             0.8,  # train_ratio
@@ -344,7 +346,7 @@ if __name__ == "__main__":
             45,  # early_stopping (0 = disabled)
         ]
 
-        print(f"BEGIN TRAINING OF [{model_name}] -----------------")
+        print(f"150K Dataset : BEGIN TRAINING OF [{model_name}] -----------------")
         train_model(
             seed=seed,
             data_folder=data_folder,
@@ -352,10 +354,10 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="log/RMSELoss_No_Noise/log_all_models.csv",
+            log_path="../150K Dataset Files/log/RMSELoss_No_Noise/log_all_models.csv",
             add_noise=False,
             noise_std=0.02,
             hyperparams=hyperparams,
-            log_dir="runs",
+            log_dir="../150K Dataset Files/runs",
         )
-        print(f"END TRAINING OF [{model_name}] -----------------")
+        print(f"150K Dataset : END TRAINING OF [{model_name}] -----------------")

@@ -267,15 +267,19 @@ def plot_runs_comparison(df: pd.DataFrame, outdir: Path) -> Path | None:
 def main(csv_path: str | Path,
          run_id: str | None = None,
          min_epochs: int = 1,
-         outdir: str | Path = "figures") -> int:
+         outdir: str | Path = "figures",
+         exclude_models: list[str] | None = None) -> int:
     """Run the full analysis.
 
     Parameters
     ----------
-    csv_path   : path to log.csv (relative paths are resolved from this script's folder)
-    run_id     : analyze only this run_id, or None to analyze all runs
-    min_epochs : ignore runs with fewer epochs (filters out aborted test runs)
-    outdir     : output directory for the figures
+    csv_path       : path to log.csv (relative paths are resolved from this script's folder)
+    run_id         : analyze only this run_id, or None to analyze all runs
+    min_epochs     : ignore runs with fewer epochs (filters out aborted test runs)
+    outdir         : output directory for the figures
+    exclude_models : list of model_name values to exclude from the analysis
+                     (e.g. a model with very poor results that would skew the
+                     comparison plots), or None to keep every model
     """
     # Relative paths are resolved from this script's folder, so the
     # PyCharm Run button works regardless of the working directory.
@@ -300,6 +304,20 @@ def main(csv_path: str | Path,
         df = df[df["run_id"] == run_id]
         if df.empty:
             print(f"Error: run_id '{run_id}' not found.", file=sys.stderr)
+            return 1
+
+    if exclude_models:
+        if "model_name" not in df.columns:
+            print("Error: cannot apply exclude_models, "
+                  "column 'model_name' not found in the log.", file=sys.stderr)
+            return 1
+        excluded_mask = df["model_name"].isin(exclude_models)
+        if excluded_mask.any():
+            print(f"[i] Excluding model(s): {', '.join(exclude_models)} "
+                  f"({excluded_mask.sum()} rows removed)\n")
+        df = df[~excluded_mask]
+        if df.empty:
+            print("No run left to analyze after excluding models.", file=sys.stderr)
             return 1
 
     # Filter out runs that are too short (aborted tests)
@@ -344,7 +362,7 @@ def main(csv_path: str | Path,
 
 if __name__ == "__main__":
     # -- Settings
-    CSV_PATH = "log/RMSELoss_Noise_std0,05/log_all_models.csv"  # path to the log file (relative to this script)
+    CSV_PATH = "../5K Dataset Files/log/RMSELoss_No_Noise/log_all_models.csv"  # path to the log file (relative to this script)
     RUN_ID = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
     MIN_EPOCHS = 10           # ignore runs with fewer epochs (aborted tests).
     # Lowered from 100: with early_stopping_patience=25 in train.py, a legitimate
@@ -352,7 +370,17 @@ if __name__ == "__main__":
     # filter those out along with actual aborted/crashed runs. Raise this back up
     # if you disable early stopping (early_stopping_patience=0) and want to filter
     # short test runs again.
-    OUTDIR = "figures"   # output directory for the figures
+    OUTDIR = "figures/RMSELoss_No_Noise"   # output directory for the figures
+    EXCLUDE_MODELS = [
+        "ModelEfficientNetB0_fvs_Noise_std0.05",
+    ]  # model_name values to exclude from the analysis (bad results, etc.)
+
     # =========================================================================
 
-    sys.exit(main(CSV_PATH, run_id=RUN_ID, min_epochs=MIN_EPOCHS, outdir=OUTDIR))
+    sys.exit(main(
+        CSV_PATH,
+        run_id=RUN_ID,
+        min_epochs=MIN_EPOCHS,
+        outdir=OUTDIR,
+        # exclude_models=EXCLUDE_MODELS
+    ))
