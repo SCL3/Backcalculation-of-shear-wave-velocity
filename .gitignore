@@ -1,4 +1,4 @@
 *.pth
-5K Dataset Files/training_data_5K/
+5K_dataset_files/training_data_5K/
 .venv
 .claude

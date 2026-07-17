@@ -12,7 +12,7 @@ if __name__ == "__main__":
     print(torch.cuda.get_device_name(0))
 
     # --- Shared settings for this batch of runs ---
-    data_folder = "5K Dataset Files/training_data_5K/dataset"  # 150K data
+    data_folder = "5K_dataset_files/training_data_5K/dataset"  # 150K data
 
     in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
     in_channels = 3
@@ -72,10 +72,10 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="5K Dataset Files/log/RMSELoss_No_Noise/log_all_models.csv",
+            log_path="5K_dataset_files/log/RMSELoss_No_Noise/log_all_models.csv",
             add_noise=False,
             noise_std=0.05,  # Gotta test on 0.02, 0.05 and 0.1
             hyperparams=hyperparams,
-            log_dir="5K Dataset Files/runs",
+            log_dir="5K_dataset_files/runs",
         )
         print(f"END TRAINING OF [{model_name}] -----------------")

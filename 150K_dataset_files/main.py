@@ -42,12 +42,12 @@ if __name__ == "__main__":
     """
 
     models = [
-        (ModelCNN, "BASELINE_ModelCNN_fvs_150K"),
-        #(Resnet50, "Resnet50_fvs"),
-        #(Resnet34, "Resnet34_fvs"),
-        #(Densenet121, "Densenet121_fvs"),
-        #(ModelSwinT, "ModelSwinT_fvs"),
-        # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_Noise_std0.05"),
+        (ModelCNN, "ModelCNN_fvs_No_Noise_150k_RMSELoss"),
+        #(Resnet50, "Resnet50_fvs_No_Noise_150k_RMSELoss"),
+        #(Resnet34, "Resnet34_fvs_No_Noise_150k_RMSELoss"),
+        #(Densenet121, "Densenet121_No_Noise_150k_RMSELoss"),
+        #(ModelSwinT, "ModelSwinT_No_Noise_150k_RMSELoss"),
+        # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_No_Noise_150k_RMSELoss"),
     ]
 
     # --- Run the training each model one after another ---
@@ -76,10 +76,10 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="150K Dataset Files/log/RMSELoss_No_Noise/log_all_models.csv",
+            log_path="150K_dataset_files/log/RMSELoss_No_Noise/log_all_models.csv",
             add_noise=False,
             noise_std=0.05,  # Gotta test on 0.02, 0.05 and 0.1
             hyperparams=hyperparams,
-            log_dir="150K Dataset Files/runs",
+            log_dir="150K_dataset_files/runs",
         )
         print(f"END TRAINING OF [{model_name}] -----------------")

@@ -232,8 +232,8 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
         if is_best:
             best_error = val_loss
             epochs_without_improvement = 0
-            os.makedirs("5K Dataset Files/PTH", exist_ok=True)
-            torch.save(model.state_dict(), f"5K Dataset Files/PTH/saved_best_model_{run_id}.pth")
+            os.makedirs("5K_dataset_files/PTH", exist_ok=True)
+            torch.save(model.state_dict(), f"5K_dataset_files/PTH/saved_best_model_{run_id}.pth")
             print(f"[{run_id}] Save best model, error", val_loss)
         else:
             epochs_without_improvement += 1
@@ -269,7 +269,7 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
                         input_x0 = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
                         input_dx = all_inputs[3].flatten().cpu().detach() if len(all_inputs) > 3 else None
                         input_Ch = all_inputs[4].flatten().cpu().detach() if len(all_inputs) > 4 else None
-                        folder_save_result = f'5K Dataset Files/validation_results/{run_id}/{"first_epoch" if epoch == 0 else "best_epoch"}'
+                        folder_save_result = f'5K_dataset_files/validation_results/{run_id}/{"first_epoch" if epoch == 0 else "best_epoch"}'
                         save_prediction(
                             input_fvs=input_fvs,
                             input_fls=input_fls,
@@ -299,7 +299,7 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
 
 if __name__ == "__main__":
     # --- Shared settings for this batch of runs ---
-    data_folder = '5K Dataset Files/training_data_5K/dataset'
+    data_folder = '5K_dataset_files/training_data_5K/dataset'
     in_instances = ['fvs', 'fls', 'x0', 'dx', 'Ch']
     in_channels = 3
     seed = 42
@@ -356,10 +356,10 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="5K Dataset Files/log/RMSELoss_No_Noise/log_all_models.csv",
+            log_path="5K_dataset_files/log/RMSELoss_No_Noise/log_all_models.csv",
             add_noise=False,
             noise_std=0.02,
             hyperparams=hyperparams,
-            log_dir="5K Dataset Files/runs",
+            log_dir="5K_dataset_files/runs",
         )
         print(f"END TRAINING OF [{model_name}] -----------------")
