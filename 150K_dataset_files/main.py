@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     # --- Shared settings for this batch of runs ---
     # data_folder = 'training_data_5K/dataset' 5K data
-    data_folder = r'C:\Users\KINH\training_data\dataset2'  # 150K data
+    data_folder = r'C:\Users\KINH\training_data\dataset2'  # 250K data
 
     in_instances = ['fvs', 'x0', 'dx', 'Ch']
     in_channels = 3
@@ -24,30 +24,28 @@ if __name__ == "__main__":
 
     # --- Models and name ---
     # !!!!! RESEED right before each construction so every model's newly-added layers
+    """
     set_seed(seed)
     ModelCNN = ModelCNN_fvs(in_instances, in_channels)
-    """
     set_seed(seed)
     Resnet50 = ModelResNet50_fvs(in_instances, in_channels)
     set_seed(seed)
     Resnet34 = ModelResNet34_fvs(in_instances, in_channels)
-    
     set_seed(seed)
     Densenet121 = ModelDenseNet121_fvs(in_instances, in_channels)
     set_seed(seed)
     ModelSwinT = ModelSwinT_fvs(in_instances, in_channels)
-    
+    """
     set_seed(seed)
     ModelEfficientNetB0 = ModelEfficientNetB0_fvs(in_instances, in_channels)
-    """
 
     models = [
-        (ModelCNN, "ModelCNN_fvs_No_Noise_150k_RMSELoss"),
-        #(Resnet50, "Resnet50_fvs_No_Noise_150k_RMSELoss"),
-        #(Resnet34, "Resnet34_fvs_No_Noise_150k_RMSELoss"),
-        #(Densenet121, "Densenet121_No_Noise_150k_RMSELoss"),
-        #(ModelSwinT, "ModelSwinT_No_Noise_150k_RMSELoss"),
-        # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_No_Noise_150k_RMSELoss"),
+        # (ModelCNN, "ModelCNN_fvs_No_Noise_250k_RMSELoss"),
+        # (Resnet50, "Resnet50_fvs_No_Noise_250k_RMSELoss"),
+        # (Resnet34, "Resnet34_fvs_No_Noise_150k_RMSELoss"),
+        # (Densenet121, "Densenet121_No_Noise_250k_RMSELoss"),
+        # (ModelSwinT, "ModelSwinT_No_Noise_250k_RMSELoss"),
+        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_No_Noise_250k_RMSELoss"),
     ]
 
     # --- Run the training each model one after another ---
