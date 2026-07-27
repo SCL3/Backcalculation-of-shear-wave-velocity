@@ -16,36 +16,46 @@ if __name__ == "__main__":
 
     # --- Shared settings for this batch of runs ---
     # data_folder = 'training_data_5K/dataset' 5K data
-    data_folder = r'C:\Users\KINH\training_data\dataset2'  # 250K data
+    data_folder = r'C:\Users\KINH\training_data\dataset2'  # 300K data
+    # !!! IMPORTANT : Only 90k data will be used, (change need to be done in Call_dataset.py file)
+    # For faster training (1 day min - 2 days max)
 
-    in_instances = ['fvs', 'x0', 'dx', 'Ch']
+    in_instances = ['fvs', 'x0', 'dx', 'Ch']  # New structure on the 300k dataset
     in_channels = 3
     seed = 42
 
     # --- Models and name ---
     # !!!!! RESEED right before each construction so every model's newly-added layers
-    """
     set_seed(seed)
     ModelCNN = ModelCNN_fvs(in_instances, in_channels)
     set_seed(seed)
     Resnet50 = ModelResNet50_fvs(in_instances, in_channels)
+    """
     set_seed(seed)
     Resnet34 = ModelResNet34_fvs(in_instances, in_channels)
+    """
     set_seed(seed)
     Densenet121 = ModelDenseNet121_fvs(in_instances, in_channels)
     set_seed(seed)
     ModelSwinT = ModelSwinT_fvs(in_instances, in_channels)
-    """
     set_seed(seed)
     ModelEfficientNetB0 = ModelEfficientNetB0_fvs(in_instances, in_channels)
 
+    # Tester avec du bruit :
+    # std = 0.0 OK
+    # std = 0.01 NO
+    # std = 0.02
+    # std = 0.05
+    # std = 0.08
+    # std = 0.1
+
     models = [
-        # (ModelCNN, "ModelCNN_fvs_No_Noise_250k_RMSELoss"),
-        # (Resnet50, "Resnet50_fvs_No_Noise_250k_RMSELoss"),
-        # (Resnet34, "Resnet34_fvs_No_Noise_150k_RMSELoss"),
-        # (Densenet121, "Densenet121_No_Noise_250k_RMSELoss"),
-        # (ModelSwinT, "ModelSwinT_No_Noise_250k_RMSELoss"),
-        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_No_Noise_250k_RMSELoss"),
+        (ModelCNN, "ModelCNN_fvs_std0.02_90k_RMSELoss"),
+        (Resnet50, "Resnet50_fvs_std0.02_90k_RMSELoss"),
+        # (Resnet34, "Resnet34_fvs_No_Noise_90k_RMSELoss"),
+        (Densenet121, "Densenet121_std0.02_90k_RMSELoss"),
+        (ModelSwinT, "ModelSwinT_std0.02_90k_RMSELoss"),
+        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.02_90k_RMSELoss"),
     ]
 
     # --- Run the training each model one after another ---
@@ -74,10 +84,10 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="150K_dataset_files/log/RMSELoss_No_Noise/log_all_models.csv",
-            add_noise=False,
-            noise_std=0.05,  # Gotta test on 0.02, 0.05 and 0.1
+            log_path="300K_dataset_files/log/90K_RMSELoss_std0.02/log_all_models.csv",
+            add_noise=True,
+            noise_std=0.02,
             hyperparams=hyperparams,
-            log_dir="150K_dataset_files/runs",
+            log_dir="300K_dataset_files/runs",
         )
         print(f"END TRAINING OF [{model_name}] -----------------")

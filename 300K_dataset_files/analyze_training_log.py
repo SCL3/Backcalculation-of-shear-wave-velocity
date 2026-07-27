@@ -362,7 +362,7 @@ def main(csv_path: str | Path,
 
 if __name__ == "__main__":
     # -- Settings
-    CSV_PATH = "../5K_dataset_files/log/RMSELoss_No_Noise/log_all_models.csv"  # path to the log file (relative to this script)
+    CSV_PATH = "log/90K_RMSELoss_No_Noise/log_all_models.csv"  # path to the log file (relative to this script)
     RUN_ID = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
     MIN_EPOCHS = 10           # ignore runs with fewer epochs (aborted tests).
     # Lowered from 100: with early_stopping_patience=25 in train.py, a legitimate
@@ -370,7 +370,7 @@ if __name__ == "__main__":
     # filter those out along with actual aborted/crashed runs. Raise this back up
     # if you disable early stopping (early_stopping_patience=0) and want to filter
     # short test runs again.
-    OUTDIR = "figures/RMSELoss_No_Noise"   # output directory for the figures
+    OUTDIR = "figures/90K_RMSELoss_No_Noise"   # output directory for the figures
     EXCLUDE_MODELS = [
         "ModelEfficientNetB0_fvs_Noise_std0.05",
     ]  # model_name values to exclude from the analysis (bad results, etc.)

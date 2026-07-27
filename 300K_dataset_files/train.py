@@ -1,6 +1,9 @@
 import torch
 # print(torch.cuda.is_available())  # Must be True
 import torch.optim as optim
+import matplotlib
+matplotlib.use('Agg')  # explicit, avoids ambiguity about which backend is active
+import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import numpy as np
@@ -142,6 +145,7 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
         in_instances, in_channels,
         os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output100'), # Adapted to Kinh 150K dataset
         add_noise=add_noise, noise_std=noise_std)
+    # !!! IMPORTANT : This code will call 90k data. To modify the value, go to Call_dataset.py
 
     val_dataset_raw = MyDataset(
         in_instances, in_channels,
@@ -232,8 +236,8 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
         if is_best:
             best_error = val_loss
             epochs_without_improvement = 0
-            os.makedirs("150K_dataset_files/PTH", exist_ok=True)
-            torch.save(model.state_dict(), f"150K_dataset_files/PTH/saved_best_model_{run_id}.pth")
+            os.makedirs("300K_dataset_files/PTH", exist_ok=True)
+            torch.save(model.state_dict(), f"300K_dataset_files/PTH/saved_best_model_{run_id}.pth")
             print(f"[{run_id}] Save best model, error", val_loss)
         else:
             epochs_without_improvement += 1
@@ -268,7 +272,7 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
                         input_x0 = all_inputs[1].flatten().cpu().detach() if len(all_inputs) > 1 else None
                         input_dx = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
                         input_Ch = all_inputs[3].flatten().cpu().detach() if len(all_inputs) > 3 else None
-                        folder_save_result = f'150K_dataset_files/validation_results/{run_id}/{"first_epoch" if epoch == 0 else "best_epoch"}'
+                        folder_save_result = f'300K_dataset_files/validation_results/{run_id}/{"first_epoch" if epoch == 0 else "best_epoch"}'
                         save_prediction(
                             input_fvs=input_fvs,
                             predict=predict.squeeze(0).cpu().detach(),
@@ -296,68 +300,37 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
 
 
 if __name__ == "__main__":
+    # --- Check if Cuda exists first ---
+    print(torch.__version__)
+    print(torch.cuda.is_available())
+    if torch.cuda.is_available():
+        print(torch.cuda.get_device_name(0))
+    else:
+        print("No CUDA GPU detected (train.py will fall back to MPS or CPU)")
+
     # --- Shared settings for this batch of runs ---
-    data_folder = r'C:\Users\KINH\training_data\dataset2'
-    in_instances = ['fvs', 'x0', 'dx', 'Ch']
+    # data_folder = 'training_data_5K/dataset' 5K data
+    data_folder = '300K_dataset_files/test/dataset'  # 300K data
+    # !!! IMPORTANT : Only 90k data will be used, (change need to be done in Call_dataset.py file)
+    # For faster training (1 day min - 2 days max)
+
+    in_instances = ['fvs', 'x0', 'dx', 'Ch']  # New structure on the 300k dataset
     in_channels = 3
     seed = 42
 
-    # --- Models and name ---
-    # Reseed right before each construction so every model's newly-added layers
-    # (conv1, fc/classifier) are initialized from the same RNG state, regardless
-    # of how many models are built before it or in what order.
-    set_seed(seed)
-    ModelCNN = ModelCNN_fvs(in_instances, in_channels)
-    set_seed(seed)
-    Resnet50 = ModelResNet50_fvs(in_instances, in_channels)
-    set_seed(seed)
-    Resnet34 = ModelResNet34_fvs(in_instances, in_channels)
-    set_seed(seed)
-    Densenet121 = ModelDenseNet121_fvs(in_instances, in_channels)
-    set_seed(seed)
-    ModelSwinT = ModelSwinT_fvs(in_instances, in_channels)
-    set_seed(seed)
-    ModelEfficientNetB0 = ModelEfficientNetB0_fvs(in_instances, in_channels)
+    # Quick sanity check before launching a full training sweep
 
-    models = [
-        (ModelCNN, "ModelCNN_fvs_No_Noise_150k"),
-        (Resnet50, "Resnet50_fvs_No_Noise_150k"),
-        (Resnet34, "Resnet34_fvs_No_Noise_150k"),
-        (Densenet121, "Densenet121_fvs_No_Noise_150k"),
-        (ModelSwinT, "ModelSwinT_fvs_No_Noise_150k"),
-        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_No_Noise_150k"),
-    ]
+    dataset = MyDataset(in_instances,
+                        in_channels=3,
+                        input_dir=os.path.join(data_folder, 'input'),
+                        output_dir=os.path.join(data_folder, 'output100'), # Adapted to Kinh 150K dataset
+                        add_noise=False,
+                        noise_std=0.00)
+    sample = dataset[0]
+    fvs = sample[0]  # shape (3, H, W): [frequency, phase_velocity, amplitude]
 
-    # --- Run the training each model one after another ---
-    for model, model_name in models:
-        optimizer = optim.Adam(model.parameters(), lr=0.0001)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)  # !!! Step size 20 instead of 30 (Kinh)
-
-        # --- Hyperparameters ---
-        hyperparams = [
-            RMSELoss(),  # loss function  !!! RMSELoss Instead of MAELoss() (for later)
-            optimizer,  # optimizer bound to this model's parameters
-            scheduler,  # LR scheduler bound to the optimizer above
-            0.8,  # train_ratio
-            8,  # batch_size
-            200,  # num_epochs
-            4,  # num_workers
-            999999,  # best_error (initial value)
-            45,  # early_stopping (0 = disabled)
-        ]
-
-        print(f"150K Dataset : BEGIN TRAINING OF [{model_name}] -----------------")
-        train_model(
-            seed=seed,
-            data_folder=data_folder,
-            in_instances=in_instances,
-            in_channels=in_channels,
-            model=model,
-            model_name=model_name,
-            log_path="/log/RMSELoss_No_Noise/log_all_models.csv",
-            add_noise=False,
-            noise_std=0.02,
-            hyperparams=hyperparams,
-            log_dir="/runs",
-        )
-        print(f"150K Dataset : END TRAINING OF [{model_name}] -----------------")
+    plt.imshow(fvs[2], aspect='auto')
+    plt.colorbar()
+    plt.title("Amplitude channel at no noise")
+    plt.savefig("noise_check.png", dpi=150, bbox_inches='tight')  # save instead of show
+    plt.close()
