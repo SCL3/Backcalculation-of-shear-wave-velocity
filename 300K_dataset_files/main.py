@@ -44,18 +44,18 @@ if __name__ == "__main__":
     # Tester avec du bruit :
     # std = 0.0 OK
     # std = 0.01 NO
-    # std = 0.02
+    # std = 0.02 OK
     # std = 0.05
     # std = 0.08
     # std = 0.1
 
     models = [
-        (ModelCNN, "ModelCNN_fvs_std0.02_90k_RMSELoss"),
-        (Resnet50, "Resnet50_fvs_std0.02_90k_RMSELoss"),
+        (ModelCNN, "ModelCNN_fvs_std0.05_90k_RMSELoss"),
+        (Resnet50, "Resnet50_fvs_std0.05_90k_RMSELoss"),
         # (Resnet34, "Resnet34_fvs_No_Noise_90k_RMSELoss"),
-        (Densenet121, "Densenet121_std0.02_90k_RMSELoss"),
-        (ModelSwinT, "ModelSwinT_std0.02_90k_RMSELoss"),
-        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.02_90k_RMSELoss"),
+        (Densenet121, "Densenet121_std0.05_90k_RMSELoss"),
+        (ModelSwinT, "ModelSwinT_std0.05_90k_RMSELoss"),
+        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.05_90k_RMSELoss"),
     ]
 
     # --- Run the training each model one after another ---
@@ -76,7 +76,7 @@ if __name__ == "__main__":
             45,  # early_stopping (0 = disabled)
         ]
 
-        print(f"BEGIN TRAINING OF [{model_name}] -----------------")
+        print(f"BEGIN TRAINING OF [{model_name}] WITH GAUSSIAN NOISE std = 0.05 -----------------")
         train_model(
             seed=seed,
             data_folder=data_folder,
@@ -84,10 +84,10 @@ if __name__ == "__main__":
             in_channels=in_channels,
             model=model,
             model_name=model_name,
-            log_path="300K_dataset_files/log/90K_RMSELoss_std0.02/log_all_models.csv",
+            log_path="300K_dataset_files/log/90K_RMSELoss_std0.05/log_all_models.csv",
             add_noise=True,
-            noise_std=0.02,
+            noise_std=0.05,
             hyperparams=hyperparams,
             log_dir="300K_dataset_files/runs",
         )
-        print(f"END TRAINING OF [{model_name}] -----------------")
+        print(f"END TRAINING OF [{model_name}] WITH GAUSSIAN NOISE std = 0.05 -----------------")
