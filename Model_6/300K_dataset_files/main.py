@@ -18,7 +18,7 @@ from loss_fcns import RMSELoss
 # GLOBAL CONFIGURATION !!! Change the config if needed train/test mode; seed; instances ...
 # =====================================================================
 
-MODE = "test"  # "train" or "test" (Overriden with : python main.py --mode train)
+MODE = "train"  # "train" or "test" (Overriden with : python main.py --mode train)
 
 SEED = 42
 
@@ -46,12 +46,15 @@ def run_train():
     # For faster training (1 day min - 2 days max)
 
     # !!!!! RESEED right before each construction so every model gets identical init
+
     set_seed(SEED)
     ModelCNN = ModelCNN_fvs(IN_INSTANCES, IN_CHANNELS)
     set_seed(SEED)
     Resnet50 = ModelResNet50_fvs(IN_INSTANCES, IN_CHANNELS)
+    """
     set_seed(SEED)
     Densenet121 = ModelDenseNet121_fvs(IN_INSTANCES, IN_CHANNELS)
+    """
     set_seed(SEED)
     ModelSwinT = ModelSwinT_fvs(IN_INSTANCES, IN_CHANNELS)
     set_seed(SEED)
@@ -61,7 +64,7 @@ def run_train():
     models = [
         (ModelCNN, "ModelCNN_fvs_std0.08_90k_RMSELoss"),
         (Resnet50, "Resnet50_fvs_std0.08_90k_RMSELoss"),
-        (Densenet121, "Densenet121_std0.08_90k_RMSELoss"),
+        # (Densenet121, "Densenet121_Model6_No_Noise_90k_RMSELoss"),
         (ModelSwinT, "ModelSwinT_std0.08_90k_RMSELoss"),
         (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.08_90k_RMSELoss"),
     ]
@@ -82,7 +85,7 @@ def run_train():
             45,  # early_stopping (0 = disabled)
         ]
 
-        print(f"BEGIN TRAINING OF [{model_name}] WITH GAUSSIAN NOISE std = 0.08 -----------------")
+        print(f"BEGIN TRAINING OF MODEL6 : [{model_name}] WITHOUT GAUSSIAN NOISE -----------------")
         train_model(
             seed=SEED,
             data_folder=data_folder,
@@ -90,13 +93,13 @@ def run_train():
             in_channels=IN_CHANNELS,
             model=model,
             model_name=model_name,
-            log_path="300K_dataset_files/log/90K_RMSELoss_std0.08/log_all_models.csv",
-            add_noise=True,
-            noise_std=0.08,
+            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_all_models.csv",
+            add_noise=False,
+            noise_std=0.0,
             hyperparams=hyperparams,
             log_dir="300K_dataset_files/runs",
         )
-        print(f"END TRAINING OF [{model_name}] WITH GAUSSIAN NOISE std = 0.08 -----------------")
+        print(f"END TRAINING OF MODEL6 : [{model_name}] WITHOUT GAUSSIAN NOISE -----------------")
 
 
 # =====================================================================
