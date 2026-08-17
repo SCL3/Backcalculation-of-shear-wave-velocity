@@ -2,26 +2,21 @@
 # -*- coding: utf-8 -*-
 """
 ===============================================================================
+This code was generated using Claude for analyzing the csv traning log file.
  analyze_training_log.py
 -------------------------------------------------------------------------------
  Analysis and visualization of training logs (log.csv) for seismic inversion
- models (e.g. ModelCNN_fvs — f-Vs dispersion -> shear-wave velocity profile).
+ models
 
  The log.csv file must contain the following columns:
    run_id, model_name, run_started_at, epoch (format "N/M"), epoch_timestamp,
    train_loss, val_loss, is_best, learning_rate, epoch_duration_sec,
    num_params, batch_size, seed
 
- Usage:
-   Edit the settings inside the `if __name__ == "__main__":` block at the
-   bottom of this file (CSV_PATH, MIN_EPOCHS, ...), then press Run in PyCharm.
-
  Outputs:
    - A text summary of each run printed to the terminal
    - figures/<run_id>_training_report.png   (4-panel report per run)
    - figures/runs_comparison.png            (if several runs are analyzed)
-
- Author: AI Intern — Civil Engineering Laboratory, NYCU
 ===============================================================================
 """
 
@@ -100,6 +95,11 @@ def summarize_run(run: pd.DataFrame) -> dict:
 
     total_sec = run["epoch_duration_sec"].sum() if "epoch_duration_sec" in run else np.nan
     gap_final = last["val_loss"] - last["train_loss"]
+    # Overfitting is measured at the BEST-VAL epoch, not the final epoch: it is
+    # the checkpoint that actually gets deployed (is_best=True), and training
+    # loss keeps dropping after that point while val loss has already plateaued
+    # — so a final/final ratio overstates the gap of the model you actually use.
+    gap_at_best = best["val_loss"] - best["train_loss"]
 
     return {
         "run_id": run["run_id"].iloc[0],
@@ -113,7 +113,8 @@ def summarize_run(run: pd.DataFrame) -> dict:
         "final_train_loss": last["train_loss"],
         "final_val_loss": last["val_loss"],
         "final_gap": gap_final,
-        "gap_ratio": last["val_loss"] / last["train_loss"] if last["train_loss"] > 0 else np.nan,
+        "gap_at_best": gap_at_best,
+        "gap_ratio": best["val_loss"] / best["train_loss"] if best["train_loss"] > 0 else np.nan,
         "total_time_h": total_sec / 3600 if np.isfinite(total_sec) else np.nan,
         "mean_epoch_sec": run["epoch_duration_sec"].mean() if "epoch_duration_sec" in run else np.nan,
         "num_params": int(run["num_params"].iloc[0]) if "num_params" in run else None,
@@ -141,9 +142,11 @@ def print_summary(stats: dict) -> None:
     print(f"  Best val loss       : {stats['best_val_loss']:.6f}  (epoch {stats['best_epoch']},"
           f" train={stats['train_at_best']:.6f})")
     print(f"  Final losses        : train={stats['final_train_loss']:.6f}"
-          f"  |  val={stats['final_val_loss']:.6f}")
-    print(f"  Final val-train gap : {stats['final_gap']:+.6f}"
-          f"  (val/train ratio = {stats['gap_ratio']:.2f})")
+          f"  |  val={stats['final_val_loss']:.6f}"
+          f"  (gap={stats['final_gap']:+.6f})")
+    print(f"  At best epoch ({stats['best_epoch']:>3d})  : train={stats['train_at_best']:.6f}"
+          f"  |  val={stats['best_val_loss']:.6f}"
+          f"  (gap={stats['gap_at_best']:+.6f}, val/train ratio = {stats['gap_ratio']:.2f})")
     if np.isfinite(stats["total_time_h"]):
         print(f"  Total duration      : {stats['total_time_h']:.2f} h"
               f"  (~{stats['mean_epoch_sec']:.1f} s/epoch)")
@@ -155,7 +158,7 @@ def print_summary(stats: dict) -> None:
     ratio = stats["gap_ratio"]
     best_ep, n_ep = stats["best_epoch"], stats["epochs_logged"]
     if np.isfinite(ratio) and ratio > 3:
-        print("    [!] Strong overfitting: val loss is >3x the train loss.")
+        print("    [!] Strong overfitting: at the best epoch, val loss is >3x train loss.")
         print("        -> Ideas: data augmentation (noise on seismograms,")
         print("           offset variation), dropout/weight decay, or a smaller model.")
     elif np.isfinite(ratio) and ratio > 1.5:
@@ -170,11 +173,44 @@ def print_summary(stats: dict) -> None:
     print()
 
 
+def compute_shared_axis_bounds(df: pd.DataFrame, pad_frac: float = 0.04) -> dict:
+    """Compute x/y limits shared by every run report generated in this session.
+
+    epoch_max : the longest run sets the x-axis, so a run that stopped early
+                (fewer epochs, e.g. by early stopping) simply shows its curve
+                ending partway across an axis that matches every other report.
+    loss_min/max : global min/max of train_loss and val_loss across ALL runs,
+                so the same y-range is used everywhere. loss_min_log guards
+                against a non-positive lower bound, which set_ylim would
+                reject on a log-scale axis.
+    """
+    epoch_max = float(df["epoch_num"].max()) * (1 + pad_frac)
+    loss_all = pd.concat([df["train_loss"], df["val_loss"]]).dropna()
+    loss_min = float(loss_all.min())
+    loss_max = float(loss_all.max()) * (1 + pad_frac)
+    loss_span = loss_max - loss_min
+    return {
+        "epoch_max": epoch_max,
+        "loss_min": loss_min - pad_frac * loss_span,
+        "loss_min_log": max(loss_min * 0.9, 1e-6),
+        "loss_max": loss_max,
+    }
+
+
 # ----------------------------------------------------------------------------
 # Figures
 # ----------------------------------------------------------------------------
-def plot_run_report(run: pd.DataFrame, stats: dict, outdir: Path) -> Path:
-    """4-panel report: loss, loss (log scale), learning rate + gap, epoch duration."""
+def plot_run_report(run: pd.DataFrame, stats: dict, outdir: Path,
+                     axis_bounds: dict | None = None) -> Path:
+    """4-panel report: loss, loss (log scale), learning rate + gap, epoch duration.
+
+    axis_bounds, if given, forces the SAME x/y limits on the two loss panels
+    across every run report generated in this session. Without it, matplotlib
+    auto-scales each figure independently, so two reports placed side by side
+    (e.g. in a slide) end up on different scales and are not visually
+    comparable — a shorter run looks like it "starts higher" purely because
+    its y-axis is tighter, not because its loss actually differs.
+    """
     fig, axes = plt.subplots(2, 2, figsize=(13, 9))
     fig.suptitle(f"Training report — {stats['run_id']}", fontsize=14, y=0.98)
     ep = run["epoch_num"]
@@ -188,6 +224,9 @@ def plot_run_report(run: pd.DataFrame, stats: dict, outdir: Path) -> Path:
                label=f"Best val ({stats['best_val_loss']:.4f} @ ep {stats['best_epoch']})")
     ax.set_xlabel("Epoch"); ax.set_ylabel("Loss")
     ax.set_title("Learning curves")
+    if axis_bounds:
+        ax.set_xlim(0, axis_bounds["epoch_max"])
+        ax.set_ylim(axis_bounds["loss_min"], axis_bounds["loss_max"])
     ax.legend()
 
     # (2) Loss curves, log scale ----------------------------------------------
@@ -197,6 +236,9 @@ def plot_run_report(run: pd.DataFrame, stats: dict, outdir: Path) -> Path:
     ax.axvline(stats["best_epoch"], color=COLOR_BEST, ls="--", lw=1, alpha=0.7)
     ax.set_xlabel("Epoch"); ax.set_ylabel("Loss (log)")
     ax.set_title("Learning curves (log scale)")
+    if axis_bounds:
+        ax.set_xlim(0, axis_bounds["epoch_max"])
+        ax.set_ylim(axis_bounds["loss_min_log"], axis_bounds["loss_max"])
     ax.legend()
 
     # (3) Learning rate + val-train gap ---------------------------------------
@@ -236,14 +278,25 @@ def plot_run_report(run: pd.DataFrame, stats: dict, outdir: Path) -> Path:
 
 
 def plot_runs_comparison(df: pd.DataFrame, outdir: Path) -> Path | None:
-    """Compare the validation loss of all runs on a single figure."""
-    runs = df["run_id"].unique()
-    if len(runs) < 2:
+    """Compare the validation loss of all runs on a single figure.
+
+    Runs are drawn worst-to-best (highest best-val-loss first), so the legend
+    — which matplotlib fills in draw order for a single-column layout — lists
+    the worst model at the top and the best at the bottom. That matches how
+    the curves actually sit on the plot: worse (higher loss) runs plateau
+    higher up, better (lower loss) runs plateau lower down, so legend order
+    and curve position agree at a glance.
+    """
+    run_ids = df["run_id"].unique()
+    if len(run_ids) < 2:
         return None
+
+    ranking = sorted(run_ids, key=lambda rid: df.loc[df["run_id"] == rid, "val_loss"].min(),
+                      reverse=True)
 
     fig, ax = plt.subplots(figsize=(11, 6))
     cmap = plt.get_cmap("tab10")
-    for i, run_id in enumerate(runs):
+    for i, run_id in enumerate(ranking):
         run = df[df["run_id"] == run_id]
         ax.plot(run["epoch_num"], run["val_loss"],
                 color=cmap(i % 10), label=f"{run_id} ({len(run)} ep, {run['criterion'].iloc[0] if 'criterion' in run.columns else '?'})",)
@@ -252,7 +305,7 @@ def plot_runs_comparison(df: pd.DataFrame, outdir: Path) -> Path | None:
                    color=cmap(i % 10), marker="*", s=80, zorder=5)
 
     ax.set_xlabel("Epoch"); ax.set_ylabel("Validation loss")
-    ax.set_title("Runs comparison — validation loss (★ = best point)")
+    ax.set_title("Runs comparison — validation loss (★ = best point, legend top→bottom = worst→best)")
     ax.legend(fontsize=8)
     fig.tight_layout()
     outpath = outdir / "runs_comparison.png"
@@ -278,8 +331,6 @@ def main(csv_path: str | Path,
     min_epochs     : ignore runs with fewer epochs (filters out aborted test runs)
     outdir         : output directory for the figures
     exclude_models : list of model_name values to exclude from the analysis
-                     (e.g. a model with very poor results that would skew the
-                     comparison plots), or None to keep every model
     """
     # Relative paths are resolved from this script's folder, so the
     # PyCharm Run button works regardless of the working directory.
@@ -336,12 +387,13 @@ def main(csv_path: str | Path,
         return 1
 
     all_stats = []
+    axis_bounds = compute_shared_axis_bounds(df)
     for rid in df["run_id"].unique():
         run = df[df["run_id"] == rid].reset_index(drop=True)
         stats = summarize_run(run)
         all_stats.append(stats)
         print_summary(stats)
-        path = plot_run_report(run, stats, outdir)
+        path = plot_run_report(run, stats, outdir, axis_bounds=axis_bounds)
         print(f"  Figure saved: {path}\n")
 
     comp = plot_runs_comparison(df, outdir)
@@ -352,8 +404,8 @@ def main(csv_path: str | Path,
     if len(all_stats) > 1:
         rec = pd.DataFrame(all_stats)[
             ["run_id", "criterion", "epochs_logged", "best_val_loss", "best_epoch",
-             "final_gap", "total_time_h"]]
-        print("\nSummary:")
+             "final_gap", "total_time_h"]].sort_values("best_val_loss")
+        print("\nSummary (best -> worst):")
         print(rec.to_string(index=False,
                             float_format=lambda x: f"{x:.4f}"))
 
@@ -362,15 +414,10 @@ def main(csv_path: str | Path,
 
 if __name__ == "__main__":
     # -- Settings
-    CSV_PATH = "log/90K_RMSELoss_std0.1/log_all_models.csv"  # path to the log file (relative to this script)
+    CSV_PATH = "log/90K_RMSELoss_No_Noise/log_all_models.csv"  # path to the log file (relative to this script)
     RUN_ID = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
     MIN_EPOCHS = 10           # ignore runs with fewer epochs (aborted tests).
-    # Lowered from 100: with early_stopping_patience=25 in train.py, a legitimate
-    # run can now stop as early as ~epoch 26 — a threshold of 100 would silently
-    # filter those out along with actual aborted/crashed runs. Raise this back up
-    # if you disable early stopping (early_stopping_patience=0) and want to filter
-    # short test runs again.
-    OUTDIR = "figures/90K_RMSELoss_std0.1"   # output directory for the figures
+    OUTDIR = "figures/90K_RMSELoss_No_Noise"   # output directory for the figures
     EXCLUDE_MODELS = [
         "ModelEfficientNetB0_fvs_Noise_std0.08",
     ]  # model_name values to exclude from the analysis (bad results, etc.)
