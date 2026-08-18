@@ -11,6 +11,7 @@ from model import (
     ModelDenseNet121_fvs,
     ModelSwinT_fvs,
     ModelEfficientNetB0_fvs,
+    ModelCustomCNN_fvs
 )
 from loss_fcns import RMSELoss
 
@@ -18,7 +19,7 @@ from loss_fcns import RMSELoss
 # GLOBAL CONFIGURATION !!! Change the config if needed train/test mode; seed; instances ...
 # =====================================================================
 
-MODE = "test"  # "train" or "test" (Overriden with : python main.py --mode train)
+MODE = "train"  # "train" or "test" (Overriden with : python main.py --mode train)
 
 SEED = 42
 
@@ -46,6 +47,7 @@ def run_train():
     # For faster training (1 day min - 2 days max)
 
     # !!!!! RESEED right before each construction so every model gets identical init
+    """
     set_seed(SEED)
     ModelCNN = ModelCNN_fvs(IN_INSTANCES, IN_CHANNELS)
     set_seed(SEED)
@@ -56,18 +58,22 @@ def run_train():
     ModelSwinT = ModelSwinT_fvs(IN_INSTANCES, IN_CHANNELS)
     set_seed(SEED)
     ModelEfficientNetB0 = ModelEfficientNetB0_fvs(IN_INSTANCES, IN_CHANNELS)
+    """
+    set_seed(SEED)
+    ModelCustomCNN = ModelCustomCNN_fvs(IN_INSTANCES, IN_CHANNELS)
 
     # Noise tests: std = 0.0 OK / 0.01 NO / 0.02 OK / 0.05 OK / 0.08 OK / 0.1 OK
     models = [
-        (ModelCNN, "ModelCNN_fvs_std0.08_90k_RMSELoss"),
-        (Resnet50, "Resnet50_fvs_std0.08_90k_RMSELoss"),
-        (Densenet121, "Densenet121_std0.08_90k_RMSELoss"),
-        (ModelSwinT, "ModelSwinT_std0.08_90k_RMSELoss"),
-        (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.08_90k_RMSELoss"),
+        # (ModelCNN, "ModelCNN_fvs_std0.08_90k_RMSELoss"),
+        # (Resnet50, "Resnet50_fvs_std0.08_90k_RMSELoss"),
+        # (Densenet121, "Densenet121_std0.08_90k_RMSELoss"),
+        # (ModelSwinT, "ModelSwinT_std0.08_90k_RMSELoss"),
+        # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.08_90k_RMSELoss"),
+        (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_90k_RMSELoss"),
     ]
 
     for model, model_name in models:
-        optimizer = optim.Adam(model.parameters(), lr=0.0001)
+        optimizer = optim.Adam(model.parameters(), lr=0.0003)  # !!! old value lr = 0.0001
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
         hyperparams = [
@@ -75,14 +81,14 @@ def run_train():
             optimizer,  # optimizer bound to this model's parameters
             scheduler,  # LR scheduler bound to the optimizer above
             0.8,  # train_ratio
-            8,  # batch_size
-            200,  # num_epochs
-            4,  # num_workers
+            64,  # batch_size  !!! old value : 8
+            300,  # num_epochs
+            8,  # num_workers  !!! old value : 4
             999999,  # best_error (initial value)
-            45,  # early_stopping (0 = disabled)
+            50,  # early_stopping (0 = disabled)
         ]
 
-        print(f"BEGIN TRAINING OF [{model_name}] WITH GAUSSIAN NOISE std = 0.08 -----------------")
+        print(f"BEGIN TRAINING OF [{model_name}] WITHOUT noise -----------------")
         train_model(
             seed=SEED,
             data_folder=data_folder,
@@ -90,13 +96,13 @@ def run_train():
             in_channels=IN_CHANNELS,
             model=model,
             model_name=model_name,
-            log_path="300K_dataset_files/log/90K_RMSELoss_std0.08/log_all_models.csv",
-            add_noise=True,
-            noise_std=0.08,
+            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_all_models.csv",
+            add_noise=False,
+            noise_std=0.01,
             hyperparams=hyperparams,
             log_dir="300K_dataset_files/runs",
         )
-        print(f"END TRAINING OF [{model_name}] WITH GAUSSIAN NOISE std = 0.08 -----------------")
+        print(f"END TRAINING OF [{model_name}] WITHOUT noise-----------------")
 
 
 # =====================================================================

@@ -80,7 +80,7 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
                 add_noise, noise_std, hyperparams, log_path, log_dir):
     """
     Run one full training + validation loop for a single model configuration.
-    Call this once per model/config to launch several trainings back to back (e.g. in a loop from __main__).
+    Call this once per model/config to launch several trainings back to back (main.py file)
 
     Parameters
     ----------
