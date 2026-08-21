@@ -6,8 +6,10 @@ from train import set_seed, train_model
 from test import run_test
 from model import (
     ModelCNN_fvs,
+    ModelCNN_fvs_v2,
     ModelResNet34_fvs,
     ModelResNet50_fvs,
+    ModelResNet50_fvs_v2,
     ModelDenseNet121_fvs,
     ModelSwinT_fvs,
     ModelEfficientNetB0_fvs,
@@ -58,9 +60,21 @@ def run_train():
     ModelSwinT = ModelSwinT_fvs(IN_INSTANCES, IN_CHANNELS)
     set_seed(SEED)
     ModelEfficientNetB0 = ModelEfficientNetB0_fvs(IN_INSTANCES, IN_CHANNELS)
-    """
     set_seed(SEED)
     ModelCustomCNN = ModelCustomCNN_fvs(IN_INSTANCES, IN_CHANNELS)
+    """
+    set_seed(SEED)
+    ModelCNN_v2_conf1 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 128)
+    set_seed(SEED)
+    ModelCNN_v2_conf2 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 16, 16)
+    set_seed(SEED)
+    ModelCNN_v2_conf3 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 16)
+    set_seed(SEED)
+    ModelCNN_v2_conf4 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 16, 128)
+    """
+    set_seed(SEED)
+    Resnet50_v2_conf1 = ModelResNet50_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 128)
+    """
 
     # Noise tests: std = 0.0 OK / 0.01 NO / 0.02 OK / 0.05 OK / 0.08 OK / 0.1 OK
     models = [
@@ -69,11 +83,15 @@ def run_train():
         # (Densenet121, "Densenet121_std0.08_90k_RMSELoss"),
         # (ModelSwinT, "ModelSwinT_std0.08_90k_RMSELoss"),
         # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.08_90k_RMSELoss"),
-        (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_90k_RMSELoss"),
+        # (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_90k_RMSELoss"),
+        (ModelCNN_v2_conf1, "ModelCNN_fvs_v2_32_128_No_Noise_90k_RMSELoss"),
+        (ModelCNN_v2_conf2, "ModelCNN_fvs_v2_16_16_No_Noise_90k_RMSELoss"),
+        (ModelCNN_v2_conf3, "ModelCNN_fvs_v2_32_16_No_Noise_90k_RMSELoss"),
+        (ModelCNN_v2_conf4, "ModelCNN_fvs_v2_16_128_No_Noise_90k_RMSELoss"),
     ]
 
     for model, model_name in models:
-        optimizer = optim.Adam(model.parameters(), lr=0.0003)  # !!! old value lr = 0.0001
+        optimizer = optim.Adam(model.parameters(), lr=0.0001)  # !!! old value lr = 0.0001
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
         hyperparams = [
@@ -81,14 +99,14 @@ def run_train():
             optimizer,  # optimizer bound to this model's parameters
             scheduler,  # LR scheduler bound to the optimizer above
             0.8,  # train_ratio
-            64,  # batch_size  !!! old value : 8
-            300,  # num_epochs
-            8,  # num_workers  !!! old value : 4
+            8,  # batch_size  !!! old value : 8
+            200,  # num_epochs  !!! old value : 200
+            4,  # num_workers  !!! old value : 4
             999999,  # best_error (initial value)
-            50,  # early_stopping (0 = disabled)
+            45,  # early_stopping (0 = disabled)  !!! old value : 45
         ]
 
-        print(f"BEGIN TRAINING OF [{model_name}] WITHOUT noise -----------------")
+        print(f"BEGIN TRAINING OF [{model_name}] WITHOUT noise V2 -----------------")
         train_model(
             seed=SEED,
             data_folder=data_folder,
@@ -96,13 +114,13 @@ def run_train():
             in_channels=IN_CHANNELS,
             model=model,
             model_name=model_name,
-            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_all_models.csv",
+            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_all_models_v2.csv",
             add_noise=False,
             noise_std=0.01,
             hyperparams=hyperparams,
             log_dir="300K_dataset_files/runs",
         )
-        print(f"END TRAINING OF [{model_name}] WITHOUT noise-----------------")
+        print(f"END TRAINING OF [{model_name}] WITHOUT noise V2 -----------------")
 
 
 # =====================================================================

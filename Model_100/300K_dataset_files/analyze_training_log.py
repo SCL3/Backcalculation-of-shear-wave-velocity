@@ -414,12 +414,12 @@ def main(csv_path: str | Path,
 
 if __name__ == "__main__":
     # -- Settings
-    CSV_PATH = "log/90K_RMSELoss_No_Noise/log_all_models.csv"  # path to the log file (relative to this script)
+    CSV_PATH = "log/log_EfficientNetB0_2.csv"  # path to the log file (relative to this script)
     RUN_ID = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
     MIN_EPOCHS = 10           # ignore runs with fewer epochs (aborted tests).
-    OUTDIR = "figures/90K_RMSELoss_No_Noise"   # output directory for the figures
+    OUTDIR = "figures/EfficientNetB0_2"   # output directory for the figures
     EXCLUDE_MODELS = [
-        "ModelEfficientNetB0_fvs_Noise_std0.08",
+        "ModelCustomCNN_fvs_No_Noise_90k_RMSELoss",
     ]  # model_name values to exclude from the analysis (bad results, etc.)
 
     # =========================================================================
@@ -429,5 +429,5 @@ if __name__ == "__main__":
         run_id=RUN_ID,
         min_epochs=MIN_EPOCHS,
         outdir=OUTDIR,
-        # exclude_models=EXCLUDE_MODELS
+        exclude_models=EXCLUDE_MODELS
     ))

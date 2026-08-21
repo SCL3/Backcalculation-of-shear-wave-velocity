@@ -58,6 +58,59 @@ class ModelCNN_fvs(nn.Module):
 
         return out
 
+# Same model as Dr. Kinh's one, BUT without 30M parameters for representing x0
+# MLP for x0
+# 2 tests needed :
+#   - x0_hidden = 32 and x0_feat_dim = 128 (default)
+#   - x0_hidden = 16 and x0_feat_dim = 16 (fewer parameters)
+#   - OPTIONAL : x0_hidden = 32 and x0_feat_dim = 16 (fewer parameters)
+class ModelCNN_fvs_v2(nn.Module):
+
+    def __init__(self, in_instances, in_channels=1, x0_hidden=32, x0_feat_dim=128):
+        super().__init__()
+        self.in_instances = in_instances
+
+        # --- Image branch: identical to the original baseline ---
+        self.base_model = resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.base_model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.base_model.fc = nn.Linear(in_features=2048, out_features=1000, bias=True)
+
+        # x0 branch: a real scalar encoder, not a spatial broadcast
+        self.x0_encoder = nn.Sequential(
+            nn.BatchNorm1d(1),
+            nn.Linear(1, x0_hidden),
+            nn.LeakyReLU(0.1),
+            nn.Linear(x0_hidden, x0_feat_dim),
+            nn.LeakyReLU(0.1),
+        )
+
+        # --- Fusion + prediction: byte-for-byte identical to the original ---
+        self.fusion = nn.Linear(1000 + x0_feat_dim, 1024)
+        self.prediction = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.LeakyReLU(0.1),
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.1),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 101),
+        )
+
+    def forward(self, *inputs):
+        fvs = inputs[0]
+        x0 = inputs[1]  # index 1 = 'x0', same convention as the original baseline
+
+        # Flatten x0 to (B, 1). No repeat over H*W, no Flatten() of a fake grid.
+        x0 = x0.reshape(x0.size(0), -1)
+
+        fvs_features = self.base_model(fvs)  # (B, 1000)
+        x0_features = self.x0_encoder(x0)  # (B, 128)
+        combined_features = torch.cat((fvs_features, x0_features), dim=1)
+        x = self.fusion(combined_features)
+
+        out = self.prediction(x)
+        return out
+
 # Old name : ModelCNN_fvs
 # SCL3 Version
 class ModelResNet50_fvs(nn.Module):
@@ -109,7 +162,62 @@ class ModelResNet50_fvs(nn.Module):
         out = self.prediction(x)
         return out
 
+# Second test, x0 fewer parameters (not 30M), and default backbone out features for resnet-50
+class ModelResNet50_fvs_v2(nn.Module):
+    """ResNet-50 backbone (native 2048-dim output) fused with MASW layout features."""
 
+    def __init__(self, in_instances, in_channels=1, x0_hidden=32, x0_feat_dim=128):
+        super().__init__()
+        self.in_instances = in_instances
+
+        # --- Image branch: identical to the original baseline ---
+        self.base_model = resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.base_model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.base_model.fc = nn.Identity()
+        backbone_out_features = 2048
+
+        # x0 branch: a real scalar encoder, not a spatial broadcast
+        self.x0_encoder = nn.Sequential(
+            nn.BatchNorm1d(1),
+            nn.Linear(1, x0_hidden),
+            nn.LeakyReLU(0.1),
+            nn.Linear(x0_hidden, x0_feat_dim),
+            nn.LeakyReLU(0.1),
+        )
+
+        # --- Fusion + prediction: byte-for-byte identical to the original ---
+        self.fusion = nn.Sequential(
+            nn.Linear(backbone_out_features + x0_feat_dim, 1024),
+            nn.LeakyReLU(0.1),
+        )
+
+        self.prediction = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.LeakyReLU(0.1),
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.1),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 101),
+        )
+
+    def forward(self, *inputs):
+        fvs = inputs[0]
+        x0 = inputs[1]  # index 1 = 'x0' cuz in_instances = ['fvs', 'x0', 'dx', 'Ch'] now
+
+        # Flatten x0 to (B, 1). No repeat over H*W, no Flatten() of a fake grid.
+        x0 = x0.reshape(x0.size(0), -1)
+
+        fvs_features = self.base_model(fvs)  # (B, 2048)  Identity
+        x0_features = self.x0_encoder(x0)  # (B, 128)
+        combined_features = torch.cat((fvs_features, x0_features), dim=1)
+        x = self.fusion(combined_features)
+
+        out = self.prediction(x)
+        return out
+
+# !!! DROPPED !!!
+# This model does not represent well the FVS image
 class ModelResNet34_fvs(nn.Module):
     """ResNet-34 backbone (native 512-dim output) fused with MASW layout features."""
 
