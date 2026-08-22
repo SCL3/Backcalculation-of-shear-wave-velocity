@@ -8,6 +8,7 @@ from model import (
     ModelDenseNet121_fvs,
     ModelSwinT_fvs,
     ModelEfficientNetB0_fvs,
+    ModelCustomCNN_fvs
 )
 from Call_dataset import MyDataset
 from save_validation import save_prediction
@@ -28,6 +29,7 @@ ARCH_KEYWORDS = [
     ("densenet121", ModelDenseNet121_fvs),
     ("efficientnetb0", ModelEfficientNetB0_fvs),
     ("swint", ModelSwinT_fvs),
+    ("CustomCNN", ModelCustomCNN_fvs),
 ]
 
 def build_model_from_filename(pth_filename, in_instances, in_channels):
