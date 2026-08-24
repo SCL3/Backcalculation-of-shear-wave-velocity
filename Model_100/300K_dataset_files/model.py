@@ -111,6 +111,211 @@ class ModelCNN_fvs_v2(nn.Module):
         out = self.prediction(x)
         return out
 
+
+class ModelCNN_fvs_v2_film(nn.Module):
+    """ModelCNN_fvs_v2 + FiLM conditioning, x0 only (no dx/Ch/L).
+
+    Same as ModelCNN_fvs_v2, plus one FiLM layer: the x0 features generate a
+    per-feature scale (gamma) and shift (beta) applied to the 1000-dim image
+    features BEFORE fusion:  f' = (1 + gamma) * f + beta.
+    The FiLM generator is zero-initialized, so at the start of training
+    gamma = beta = 0 and f' == f exactly: the model begins identical to
+    ModelCNN_fvs_v2 and learns the modulation progressively.
+    The concatenation path is kept in parallel (info flows both ways).
+    Extra cost: Linear(x0_feat_dim, 2*1000) = 258,000 params for feat_dim=128.
+    """
+
+    def __init__(self, in_instances, in_channels=1, x0_hidden=32, x0_feat_dim=128, fusion_seed=None):
+        super().__init__()
+        self.in_instances = in_instances
+
+        # --- Image branch: identical to the original baseline ---
+        self.base_model = resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.base_model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.base_model.fc = nn.Linear(in_features=2048, out_features=1000, bias=True)
+
+        # --- x0 branch: same scalar encoder as ModelCNN_fvs_v2 ---
+        self.x0_encoder = nn.Sequential(
+            nn.BatchNorm1d(1),
+            nn.Linear(1, x0_hidden),
+            nn.LeakyReLU(0.1),
+            nn.Linear(x0_hidden, x0_feat_dim),
+            nn.LeakyReLU(0.1),
+        )
+
+        # --- FiLM generator: scalars -> per-feature (gamma, beta) for the 1000 image features ---
+        # Zero-init => identity at start: (1+0)*f + 0 == f. No destabilization risk.
+        self.film = nn.Linear(x0_feat_dim, 2 * 1000)
+        nn.init.zeros_(self.film.weight)
+        nn.init.zeros_(self.film.bias)
+
+        # Optional RNG re-sync so fusion/prediction get the same init across
+        # variants regardless of how many draws the layers above consumed.
+        if fusion_seed is not None:
+            torch.manual_seed(fusion_seed)
+
+        # --- Fusion + prediction: identical to ModelCNN_fvs_v2 ---
+        self.fusion = nn.Linear(1000 + x0_feat_dim, 1024)
+        self.prediction = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.LeakyReLU(0.1),
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.1),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 101),
+        )
+
+    def forward(self, *inputs):
+        fvs = inputs[0]
+        x0 = inputs[1].reshape(inputs[1].size(0), -1).float()  # (B, 1)
+
+        fvs_features = self.base_model(fvs)  # (B, 1000)
+        x0_features = self.x0_encoder(x0)  # (B, x0_feat_dim)
+
+        # FiLM modulation: scalars decide how much to amplify/attenuate each image feature
+        gamma, beta = self.film(x0_features).chunk(2, dim=1)  # (B, 1000) each
+        fvs_features = (1.0 + gamma) * fvs_features + beta
+
+        combined_features = torch.cat((fvs_features, x0_features), dim=1)
+        x = self.fusion(combined_features)
+        return self.prediction(x)
+
+
+class ModelCNN_fvs_v2_all_geo(nn.Module):
+    """ModelCNN_fvs_v2 with ALL 4 geometric scalars: x0, dx, Ch, L=(Ch-1)*dx.
+
+    dx and Ch are already loaded by the dataset (inputs[2], inputs[3]) but
+    never used by the v2 family. L is the sensor array length -- direct
+    physical meaning in MASW (correlated with investigation depth). This is
+    NEW information the 30M-param baseline never had.
+    BatchNorm1d(4) normalizes each scalar with its own batch statistics, so
+    L (23..94) cannot dominate x0 (0..1) by raw scale.
+    Extra cost vs ModelCNN_fvs_v2: +102 params only (4,392 vs 4,290 encoder).
+    """
+
+    def __init__(self, in_instances, in_channels=1, x0_hidden=32, x0_feat_dim=128, fusion_seed=None):
+        super().__init__()
+        self.in_instances = in_instances
+
+        # --- Image branch: identical to the original baseline ---
+        self.base_model = resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.base_model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.base_model.fc = nn.Linear(in_features=2048, out_features=1000, bias=True)
+
+        # --- Scalar branch: x0 + dx + Ch + derived L, instead of x0 alone ---
+        self.scalar_encoder = nn.Sequential(
+            nn.BatchNorm1d(4),  # per-feature normalization: x0/dx/Ch/L have very different scales
+            nn.Linear(4, x0_hidden),
+            nn.LeakyReLU(0.1),
+            nn.Linear(x0_hidden, x0_feat_dim),
+            nn.LeakyReLU(0.1),
+        )
+
+        if fusion_seed is not None:
+            torch.manual_seed(fusion_seed)
+
+        # --- Fusion + prediction: identical to ModelCNN_fvs_v2 ---
+        self.fusion = nn.Linear(1000 + x0_feat_dim, 1024)
+        self.prediction = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.LeakyReLU(0.1),
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.1),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 101),
+        )
+
+    def _build_scalars(self, inputs):
+        """Stack x0, dx, Ch and derived L=(Ch-1)*dx into a (B, 4) tensor."""
+        x0 = inputs[1].reshape(inputs[1].size(0), -1).float()
+        dx = inputs[2].reshape(inputs[2].size(0), -1).float()
+        ch = inputs[3].reshape(inputs[3].size(0), -1).float()
+        L = (ch - 1.0) * dx  # sensor array length (23..94 in the current dataset)
+        return torch.cat([x0, dx, ch, L], dim=1)  # (B, 4)
+
+    def forward(self, *inputs):
+        fvs = inputs[0]
+        scalars = self._build_scalars(inputs)
+
+        fvs_features = self.base_model(fvs)  # (B, 1000)
+        scalar_features = self.scalar_encoder(scalars)  # (B, x0_feat_dim)
+
+        combined_features = torch.cat((fvs_features, scalar_features), dim=1)
+        x = self.fusion(combined_features)
+        return self.prediction(x)
+
+
+class ModelCNN_fvs_v2_all_geo_film(nn.Module):
+    """ModelCNN_fvs_v2 with BOTH upgrades: 4 geometric scalars AND FiLM.
+
+    The scalar branch encodes x0/dx/Ch/L (new information), and its features
+    modulate the 1000 image features via FiLM (multiplicative interaction)
+    before the usual concatenation + fusion. FiLM is zero-initialized, so
+    training starts exactly as ModelCNN_fvs_v2_all_geo and learns the
+    modulation progressively.
+    """
+
+    def __init__(self, in_instances, in_channels=1, x0_hidden=32, x0_feat_dim=128, fusion_seed=None):
+        super().__init__()
+        self.in_instances = in_instances
+
+        # --- Image branch: identical to the original baseline ---
+        self.base_model = resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.base_model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.base_model.fc = nn.Linear(in_features=2048, out_features=1000, bias=True)
+
+        # --- Scalar branch: x0 + dx + Ch + derived L ---
+        self.scalar_encoder = nn.Sequential(
+            nn.BatchNorm1d(4),
+            nn.Linear(4, x0_hidden),
+            nn.LeakyReLU(0.1),
+            nn.Linear(x0_hidden, x0_feat_dim),
+            nn.LeakyReLU(0.1),
+        )
+
+        # --- FiLM generator (zero-init => identity at start) ---
+        self.film = nn.Linear(x0_feat_dim, 2 * 1000)
+        nn.init.zeros_(self.film.weight)
+        nn.init.zeros_(self.film.bias)
+
+        if fusion_seed is not None:
+            torch.manual_seed(fusion_seed)
+
+        # --- Fusion + prediction: identical to ModelCNN_fvs_v2 ---
+        self.fusion = nn.Linear(1000 + x0_feat_dim, 1024)
+        self.prediction = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.LeakyReLU(0.1),
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.1),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 101),
+        )
+
+    def _build_scalars(self, inputs):
+        x0 = inputs[1].reshape(inputs[1].size(0), -1).float()
+        dx = inputs[2].reshape(inputs[2].size(0), -1).float()
+        ch = inputs[3].reshape(inputs[3].size(0), -1).float()
+        L = (ch - 1.0) * dx
+        return torch.cat([x0, dx, ch, L], dim=1)
+
+    def forward(self, *inputs):
+        fvs = inputs[0]
+        scalars = self._build_scalars(inputs)
+
+        fvs_features = self.base_model(fvs)  # (B, 1000)
+        scalar_features = self.scalar_encoder(scalars)  # (B, x0_feat_dim)
+
+        gamma, beta = self.film(scalar_features).chunk(2, dim=1)  # (B, 1000) each
+        fvs_features = (1.0 + gamma) * fvs_features + beta
+
+        combined_features = torch.cat((fvs_features, scalar_features), dim=1)
+        x = self.fusion(combined_features)
+        return self.prediction(x)
+
 # Old name : ModelCNN_fvs
 # SCL3 Version
 class ModelResNet50_fvs(nn.Module):

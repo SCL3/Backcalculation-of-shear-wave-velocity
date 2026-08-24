@@ -13,7 +13,10 @@ from model import (
     ModelDenseNet121_fvs,
     ModelSwinT_fvs,
     ModelEfficientNetB0_fvs,
-    ModelCustomCNN_fvs
+    ModelCustomCNN_fvs,
+    ModelCNN_fvs_v2_all_geo_film,
+    ModelCNN_fvs_v2_film,
+    ModelCNN_fvs_v2_all_geo
 )
 from loss_fcns import RMSELoss
 
@@ -72,8 +75,16 @@ def run_train():
     ModelCNN_v2_conf4 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 16, 128)
     """
     set_seed(SEED)
-    Resnet50_v2_conf1 = ModelResNet50_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 128)
+    V2_all_geo_film = ModelCNN_fvs_v2_all_geo_film(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
 
+    """
+    set_seed(SEED)  # TO RESTART
+    Resnet50_v2_conf1 = ModelResNet50_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 128)
+    set_seed(SEED)
+    V2_all_geo = ModelCNN_fvs_v2_all_geo(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
+    set_seed(SEED)
+    V2_film = ModelCNN_fvs_v2_film(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
+    """
 
     # Noise tests: std = 0.0 OK / 0.01 NO / 0.02 OK / 0.05 OK / 0.08 OK / 0.1 OK
     models = [
@@ -87,7 +98,11 @@ def run_train():
         # (ModelCNN_v2_conf2, "ModelCNN_fvs_v2_16_16_No_Noise_90k_RMSELoss"),
         # (ModelCNN_v2_conf3, "ModelCNN_fvs_v2_32_16_No_Noise_90k_RMSELoss"),
         # (ModelCNN_v2_conf4, "ModelCNN_fvs_v2_16_128_No_Noise_90k_RMSELoss"),
-        (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_90k_RMSELoss"),
+
+        (V2_all_geo_film, "ModelCNN_fvs_v2_all_geo_film_No_Noise_90k_RMSELoss"),
+        # (V2_all_geo, "ModelCNN_fvs_v2_all_geo_No_Noise_90k_RMSELoss"),
+        # (V2_film, "ModelCNN_fvs_v2_film_No_Noise_90k_RMSELoss"),
+        # (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_90k_RMSELoss"),
     ]
 
     for model, model_name in models:
