@@ -26,7 +26,7 @@ from loss_fcns import RMSELoss
 
 MODE = "train"  # "train" or "test" (Overriden with : python main.py --mode train)
 
-SEED = 42
+SEED = 43  # !!! old value : 42
 
 # Input structure used to TRAIN the models stored in PTH/ (300K dataset structure).
 # !!! Must match exactly what was used at training time, otherwise
@@ -63,6 +63,7 @@ def run_train():
     ModelSwinT = ModelSwinT_fvs(IN_INSTANCES, IN_CHANNELS)
     set_seed(SEED)
     ModelEfficientNetB0 = ModelEfficientNetB0_fvs(IN_INSTANCES, IN_CHANNELS)
+    """
     set_seed(SEED)
     ModelCustomCNN = ModelCustomCNN_fvs(IN_INSTANCES, IN_CHANNELS)
     set_seed(SEED)
@@ -73,18 +74,15 @@ def run_train():
     ModelCNN_v2_conf3 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 16)
     set_seed(SEED)
     ModelCNN_v2_conf4 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 16, 128)
-    """
+
     set_seed(SEED)
     V2_all_geo_film = ModelCNN_fvs_v2_all_geo_film(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
 
-    """
-    set_seed(SEED)  # TO RESTART
     Resnet50_v2_conf1 = ModelResNet50_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 128)
     set_seed(SEED)
     V2_all_geo = ModelCNN_fvs_v2_all_geo(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
     set_seed(SEED)
     V2_film = ModelCNN_fvs_v2_film(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
-    """
 
     # Noise tests: std = 0.0 OK / 0.01 NO / 0.02 OK / 0.05 OK / 0.08 OK / 0.1 OK
     models = [
@@ -93,16 +91,16 @@ def run_train():
         # (Densenet121, "Densenet121_std0.08_90k_RMSELoss"),
         # (ModelSwinT, "ModelSwinT_std0.08_90k_RMSELoss"),
         # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.08_90k_RMSELoss"),
-        # (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_90k_RMSELoss"),
-        # (ModelCNN_v2_conf1, "ModelCNN_fvs_v2_32_128_No_Noise_90k_RMSELoss"),
-        # (ModelCNN_v2_conf2, "ModelCNN_fvs_v2_16_16_No_Noise_90k_RMSELoss"),
-        # (ModelCNN_v2_conf3, "ModelCNN_fvs_v2_32_16_No_Noise_90k_RMSELoss"),
-        # (ModelCNN_v2_conf4, "ModelCNN_fvs_v2_16_128_No_Noise_90k_RMSELoss"),
+        (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_90k_RMSELoss"),
+        (ModelCNN_v2_conf1, "ModelCNN_fvs_v2_32_128_No_Noise_90k_RMSELoss"),
+        (ModelCNN_v2_conf2, "ModelCNN_fvs_v2_16_16_No_Noise_90k_RMSELoss"),
+        (ModelCNN_v2_conf3, "ModelCNN_fvs_v2_32_16_No_Noise_90k_RMSELoss"),
+        (ModelCNN_v2_conf4, "ModelCNN_fvs_v2_16_128_No_Noise_90k_RMSELoss"),
 
         (V2_all_geo_film, "ModelCNN_fvs_v2_all_geo_film_No_Noise_90k_RMSELoss"),
-        # (V2_all_geo, "ModelCNN_fvs_v2_all_geo_No_Noise_90k_RMSELoss"),
-        # (V2_film, "ModelCNN_fvs_v2_film_No_Noise_90k_RMSELoss"),
-        # (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_90k_RMSELoss"),
+        (V2_all_geo, "ModelCNN_fvs_v2_all_geo_No_Noise_90k_RMSELoss"),
+        (V2_film, "ModelCNN_fvs_v2_film_No_Noise_90k_RMSELoss"),
+        (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_90k_RMSELoss"),
     ]
 
     for model, model_name in models:
