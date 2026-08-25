@@ -66,6 +66,7 @@ def run_train():
     """
     set_seed(SEED)
     ModelCustomCNN = ModelCustomCNN_fvs(IN_INSTANCES, IN_CHANNELS)
+    """
     set_seed(SEED)
     ModelCNN_v2_conf1 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 128)
     set_seed(SEED)
@@ -74,7 +75,7 @@ def run_train():
     ModelCNN_v2_conf3 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 16)
     set_seed(SEED)
     ModelCNN_v2_conf4 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 16, 128)
-
+    """
     set_seed(SEED)
     V2_all_geo_film = ModelCNN_fvs_v2_all_geo_film(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
 
@@ -91,16 +92,16 @@ def run_train():
         # (Densenet121, "Densenet121_std0.08_90k_RMSELoss"),
         # (ModelSwinT, "ModelSwinT_std0.08_90k_RMSELoss"),
         # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.08_90k_RMSELoss"),
-        (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_90k_RMSELoss"),
-        (ModelCNN_v2_conf1, "ModelCNN_fvs_v2_32_128_No_Noise_90k_RMSELoss"),
-        (ModelCNN_v2_conf2, "ModelCNN_fvs_v2_16_16_No_Noise_90k_RMSELoss"),
-        (ModelCNN_v2_conf3, "ModelCNN_fvs_v2_32_16_No_Noise_90k_RMSELoss"),
-        (ModelCNN_v2_conf4, "ModelCNN_fvs_v2_16_128_No_Noise_90k_RMSELoss"),
+        (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_5k_RMSELoss"),
+        # (ModelCNN_v2_conf1, "ModelCNN_fvs_v2_32_128_No_Noise_5k_RMSELoss"),
+        # (ModelCNN_v2_conf2, "ModelCNN_fvs_v2_16_16_No_Noise_5k_RMSELoss"),
+        # (ModelCNN_v2_conf3, "ModelCNN_fvs_v2_32_16_No_Noise_5k_RMSELoss"),
+        # (ModelCNN_v2_conf4, "ModelCNN_fvs_v2_16_128_No_Noise_5k_RMSELoss"),
 
-        (V2_all_geo_film, "ModelCNN_fvs_v2_all_geo_film_No_Noise_90k_RMSELoss"),
-        (V2_all_geo, "ModelCNN_fvs_v2_all_geo_No_Noise_90k_RMSELoss"),
-        (V2_film, "ModelCNN_fvs_v2_film_No_Noise_90k_RMSELoss"),
-        (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_90k_RMSELoss"),
+        (V2_all_geo_film, "ModelCNN_fvs_v2_all_geo_film_No_Noise_5k_RMSELoss"),
+        (V2_all_geo, "ModelCNN_fvs_v2_all_geo_No_Noise_5k_RMSELoss"),
+        (V2_film, "ModelCNN_fvs_v2_film_No_Noise_5k_RMSELoss"),
+        (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_5k_RMSELoss"),
     ]
 
     for model, model_name in models:
@@ -119,7 +120,7 @@ def run_train():
             45,  # early_stopping (0 = disabled)  !!! old value : 45
         ]
 
-        print(f"BEGIN TRAINING OF [{model_name}] WITHOUT noise V2 -----------------")
+        print(f"BEGIN TRAINING OF [{model_name}] 5K WITHOUT noise V2 -----------------")
         train_model(
             seed=SEED,
             data_folder=data_folder,
@@ -127,13 +128,13 @@ def run_train():
             in_channels=IN_CHANNELS,
             model=model,
             model_name=model_name,
-            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_all_models_v2.csv",
+            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_5K_all_models_v2.csv",
             add_noise=False,
             noise_std=0.01,
             hyperparams=hyperparams,
             log_dir="300K_dataset_files/runs",
         )
-        print(f"END TRAINING OF [{model_name}] WITHOUT noise V2 -----------------")
+        print(f"END TRAINING OF [{model_name}] 5K WITHOUT noise V2 -----------------")
 
 
 # =====================================================================
