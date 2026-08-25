@@ -18,6 +18,7 @@ from model import (
     ModelCNN_fvs_v2_film,
     ModelCNN_fvs_v2_all_geo
 )
+from model_test_geo import ModelCNN_fvs_v3_geo
 from loss_fcns import RMSELoss
 
 # =====================================================================
@@ -26,7 +27,7 @@ from loss_fcns import RMSELoss
 
 MODE = "train"  # "train" or "test" (Overriden with : python main.py --mode train)
 
-SEED = 43  # !!! old value : 42
+SEED = 42  # !!! old value : 42
 
 # Input structure used to TRAIN the models stored in PTH/ (300K dataset structure).
 # !!! Must match exactly what was used at training time, otherwise
@@ -63,10 +64,8 @@ def run_train():
     ModelSwinT = ModelSwinT_fvs(IN_INSTANCES, IN_CHANNELS)
     set_seed(SEED)
     ModelEfficientNetB0 = ModelEfficientNetB0_fvs(IN_INSTANCES, IN_CHANNELS)
-    """
     set_seed(SEED)
     ModelCustomCNN = ModelCustomCNN_fvs(IN_INSTANCES, IN_CHANNELS)
-    """
     set_seed(SEED)
     ModelCNN_v2_conf1 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 128)
     set_seed(SEED)
@@ -75,7 +74,7 @@ def run_train():
     ModelCNN_v2_conf3 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 32, 16)
     set_seed(SEED)
     ModelCNN_v2_conf4 = ModelCNN_fvs_v2(IN_INSTANCES, IN_CHANNELS, 16, 128)
-    """
+    
     set_seed(SEED)
     V2_all_geo_film = ModelCNN_fvs_v2_all_geo_film(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
 
@@ -84,6 +83,16 @@ def run_train():
     V2_all_geo = ModelCNN_fvs_v2_all_geo(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
     set_seed(SEED)
     V2_film = ModelCNN_fvs_v2_film(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
+    """
+    set_seed(SEED)
+    V3_geo_G1 = ModelCNN_fvs_v3_geo(IN_INSTANCES, IN_CHANNELS, 64, 128,
+                                    num_fourier_bands=0, use_film=False, fusion_seed=SEED)
+    set_seed(SEED)
+    V3_geo_G2 = ModelCNN_fvs_v3_geo(IN_INSTANCES, IN_CHANNELS, 64, 128,
+                                    num_fourier_bands=4, use_film=False, fusion_seed=SEED)
+    set_seed(SEED)
+    V3_geo_G3 = ModelCNN_fvs_v3_geo(IN_INSTANCES, IN_CHANNELS, 64, 128,
+                                    num_fourier_bands=4, use_film=True, fusion_seed=SEED)
 
     # Noise tests: std = 0.0 OK / 0.01 NO / 0.02 OK / 0.05 OK / 0.08 OK / 0.1 OK
     models = [
@@ -92,16 +101,19 @@ def run_train():
         # (Densenet121, "Densenet121_std0.08_90k_RMSELoss"),
         # (ModelSwinT, "ModelSwinT_std0.08_90k_RMSELoss"),
         # (ModelEfficientNetB0, "ModelEfficientNetB0_fvs_std0.08_90k_RMSELoss"),
-        (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_5k_RMSELoss"),
+        # (ModelCustomCNN, "ModelCustomCNN_fvs_No_Noise_5k_RMSELoss"),
         # (ModelCNN_v2_conf1, "ModelCNN_fvs_v2_32_128_No_Noise_5k_RMSELoss"),
         # (ModelCNN_v2_conf2, "ModelCNN_fvs_v2_16_16_No_Noise_5k_RMSELoss"),
         # (ModelCNN_v2_conf3, "ModelCNN_fvs_v2_32_16_No_Noise_5k_RMSELoss"),
         # (ModelCNN_v2_conf4, "ModelCNN_fvs_v2_16_128_No_Noise_5k_RMSELoss"),
+        # (V2_all_geo_film, "ModelCNN_fvs_v2_all_geo_film_No_Noise_5k_RMSELoss"),
+        # (V2_all_geo, "ModelCNN_fvs_v2_all_geo_No_Noise_5k_RMSELoss"),
+        # (V2_film, "ModelCNN_fvs_v2_film_No_Noise_5k_RMSELoss"),
+        # (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_5k_RMSELoss"),
 
-        (V2_all_geo_film, "ModelCNN_fvs_v2_all_geo_film_No_Noise_5k_RMSELoss"),
-        (V2_all_geo, "ModelCNN_fvs_v2_all_geo_No_Noise_5k_RMSELoss"),
-        (V2_film, "ModelCNN_fvs_v2_film_No_Noise_5k_RMSELoss"),
-        (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_5k_RMSELoss"),
+        (V3_geo_G1, "ModelCNN_fvs_v3_geo_G1_90k_RMSELoss"),
+        # (V3_geo_G2, "ModelCNN_fvs_v3_geo_G2_90k_RMSELoss"),
+        (V3_geo_G3, "ModelCNN_fvs_v3_geo_G3_90k_RMSELoss"),
     ]
 
     for model, model_name in models:
@@ -120,7 +132,7 @@ def run_train():
             45,  # early_stopping (0 = disabled)  !!! old value : 45
         ]
 
-        print(f"BEGIN TRAINING OF [{model_name}] 5K WITHOUT noise V2 -----------------")
+        print(f"BEGIN TRAINING OF [{model_name}] 90K WITHOUT noise V3 -----------------")
         train_model(
             seed=SEED,
             data_folder=data_folder,
@@ -128,13 +140,13 @@ def run_train():
             in_channels=IN_CHANNELS,
             model=model,
             model_name=model_name,
-            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_5K_all_models_v2.csv",
+            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_geo_model_test_v3.csv",
             add_noise=False,
             noise_std=0.01,
             hyperparams=hyperparams,
             log_dir="300K_dataset_files/runs",
         )
-        print(f"END TRAINING OF [{model_name}] 5K WITHOUT noise V2 -----------------")
+        print(f"END TRAINING OF [{model_name}] 90K WITHOUT noise V3 -----------------")
 
 
 # =====================================================================

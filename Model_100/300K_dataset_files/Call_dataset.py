@@ -38,7 +38,7 @@ class MyDataset(Dataset):
         return np.clip(amplitude + noise, 0.0, None)
 
     def __len__(self):
-        return min(5000, len(self.input_files))  # Old value : 90k is used instead of 300k (with 90K the training last +24hours !)
+        return min(90000, len(self.input_files))  # Old value : 90k is used instead of 300k (with 90K the training last +24hours !)
     def __getitem__(self, idx):
         mat_data = scipy.io.loadmat(self.input_files[idx])
         var_names = [key for key in mat_data.keys() if not key.startswith('__')]
