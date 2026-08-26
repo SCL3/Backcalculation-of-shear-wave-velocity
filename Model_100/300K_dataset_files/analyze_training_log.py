@@ -414,10 +414,10 @@ def main(csv_path: str | Path,
 
 if __name__ == "__main__":
     # -- Settings
-    CSV_PATH = "log/90K_RMSELoss_No_Noise/log_5K_all_models_v2.csv"  # path to the log file (relative to this script)
+    CSV_PATH = "log/90K_RMSELoss_No_Noise/log_geo_model_test_v3.csv"  # path to the log file (relative to this script)
     RUN_ID = None        # e.g. "ModelResNet50_fvs_20260707_032232", or None for all runs
     MIN_EPOCHS = 10           # ignore runs with fewer epochs (aborted tests).
-    OUTDIR = "figures/V2/5K_all_models_v2"   # output directory for the figures
+    OUTDIR = "figures/V2/log_geo_model_test_v3"   # output directory for the figures
     EXCLUDE_MODELS = [
         "ModelCustomCNN_fvs_No_Noise_90k_RMSELoss",
     ]  # model_name values to exclude from the analysis (bad results, etc.)

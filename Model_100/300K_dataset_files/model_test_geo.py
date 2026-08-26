@@ -4,14 +4,33 @@ model_test_geo.py
 Same usage convention as model.py: build the model in main.py, add it to the
 `models` list, launch run_train().
 
-    from model_test_geo import ModelCNN_fvs_v3_geo
+    from model_test_geo import (ModelCNN_fvs_v3_geo,
+                                ModelDenseNet121_fvs_geo,
+                                ModelEfficientNetB0_fvs_geo)
 
     set_seed(SEED)
-    V3_geo = ModelCNN_fvs_v3_geo(IN_INSTANCES, IN_CHANNELS, 64, 128, fusion_seed=SEED)
+    Dense_geo = ModelDenseNet121_fvs_geo(IN_INSTANCES, IN_CHANNELS, 64, 128, fusion_seed=SEED)
+    set_seed(SEED)
+    Eff_geo = ModelEfficientNetB0_fvs_geo(IN_INSTANCES, IN_CHANNELS, 64, 128, fusion_seed=SEED)
 
     models = [
-        (V3_geo, "ModelCNN_fvs_v3_geo_G3_90k_RMSELoss"),
+        (Dense_geo, "ModelDenseNet121_fvs_geo_90k_RMSELoss"),
+        (Eff_geo, "ModelEfficientNetB0_fvs_geo_90k_RMSELoss"),
     ]
+
+Three models are available, all sharing the exact same geometry branch (the G3
+configuration: physics features + Fourier encoding + low-rank FiLM). Only the
+image backbone changes, and each backbone is copied verbatim from its
+counterpart in model.py so the comparison against your existing runs stays
+controlled:
+
+    ModelCNN_fvs_v3_geo          <- ModelCNN_fvs            (resnet50,        1000-d)
+    ModelDenseNet121_fvs_geo     <- ModelDenseNet121_fvs    (densenet121,     1024-d)
+    ModelEfficientNetB0_fvs_geo  <- ModelEfficientNetB0_fvs (efficientnet_b0, 1280-d)
+
+Note that the FiLM generator is sized to each backbone's own output width, and
+that DenseNet / EfficientNet use `fusion = Sequential(Linear, LeakyReLU)` while
+ModelCNN_fvs uses a bare `Linear` -- both reproduced as in model.py.
 
 -------------------------------------------------------------------------------
 SCOPE
@@ -74,6 +93,8 @@ import math
 import torch
 import torch.nn as nn
 from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import densenet121, DenseNet121_Weights
+from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
 
 
 # ===========================================================================
@@ -323,7 +344,172 @@ class ModelCNN_fvs_v3_geo(nn.Module):
 
 
 # ===========================================================================
-# 4. Self-test: rank-1 proof, parameter budget, shape check
+# 4. Same geometry branch, other backbones
+# ===========================================================================
+# ModelCNN_fvs_v3_geo above is deliberately left untouched: its state_dict keys
+# must keep matching the G3 checkpoint already trained. The two classes below
+# therefore repeat the geometry/fusion/head code rather than factoring it into a
+# shared base class. A little duplication is a cheap price for not breaking a
+# checkpoint that cost 10 hours of GPU time.
+
+
+def _as_column(t):
+    """Whatever shape the dataset produced -> (B, 1) float."""
+    return t.reshape(t.size(0), -1)[:, :1].float()
+
+
+class ModelDenseNet121_fvs_geo(nn.Module):
+    """DenseNet-121 image branch (verbatim from ModelDenseNet121_fvs) + the G3 geometry branch.
+
+    DenseNet concatenates every previous feature map inside a block, so channels
+    are reused rather than recomputed. That gives strong feature propagation at
+    a modest parameter count (~7M for the backbone), which is why it holds up
+    well on the FVS images despite being much smaller than resnet50.
+
+    Backbone output is 1024-d (not 1000 as in ModelCNN_fvs), so the FiLM
+    generator is sized accordingly. `fusion` is Sequential(Linear, LeakyReLU)
+    here, exactly as in model.py -- ModelCNN_fvs uses a bare Linear instead.
+    """
+
+    def __init__(self, in_instances, in_channels=3, geo_hidden=64, geo_feat_dim=128,
+                 num_fourier_bands=4, use_film=True, film_rank=16,
+                 out_dim=101, fusion_seed=None):
+        super().__init__()
+        self.in_instances = in_instances
+
+        # ---------- Image branch: copied verbatim from ModelDenseNet121_fvs ----------
+        self.base_model = densenet121(weights=DenseNet121_Weights.DEFAULT)
+        self.base_model.features.conv0 = nn.Conv2d(in_channels, 64, kernel_size=7,
+                                                   stride=2, padding=3, bias=False)
+        self.base_model.classifier = nn.Identity()
+        backbone_out_features = 1024
+
+        # ---------- Geometry branch: identical to the G3 configuration ----------
+        self.geo_features = GeometryFeatures(num_fourier_bands=num_fourier_bands)
+        self.geo_encoder = nn.Sequential(
+            nn.Linear(self.geo_features.out_dim, geo_hidden),
+            nn.LeakyReLU(0.1),
+            nn.Linear(geo_hidden, geo_feat_dim),
+            nn.LeakyReLU(0.1),
+        )
+        self.film = (LowRankFiLM(geo_feat_dim, backbone_out_features, rank=film_rank)
+                     if use_film else None)
+
+        # ---------- Fusion + head: copied verbatim from ModelDenseNet121_fvs ----------
+        if fusion_seed is not None:
+            torch.manual_seed(fusion_seed)
+        self.fusion = nn.Sequential(
+            nn.Linear(backbone_out_features + geo_feat_dim, 1024),
+            nn.LeakyReLU(0.1),
+        )
+        self.prediction = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.LeakyReLU(0.1),
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.1),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, out_dim),
+        )
+
+    def geometry_branch_parameters(self):
+        mods = [self.geo_encoder] + ([self.film] if self.film is not None else [])
+        return sum(p.numel() for m in mods for p in m.parameters())
+
+    def forward(self, *inputs):
+        fvs = inputs[0]
+        x0_n = _as_column(inputs[1])   # index 1 = 'x0', same convention as the baseline
+        dx = _as_column(inputs[2])
+        ch = _as_column(inputs[3])
+
+        fvs_features = self.base_model(fvs)                              # (B, 1024)
+        geo_features = self.geo_encoder(self.geo_features(x0_n, dx, ch))  # (B, 128)
+
+        if self.film is not None:
+            fvs_features = self.film(fvs_features, geo_features)
+
+        x = self.fusion(torch.cat((fvs_features, geo_features), dim=1))
+        return self.prediction(x)
+
+
+class ModelEfficientNetB0_fvs_geo(nn.Module):
+    """EfficientNet-B0 image branch (verbatim from ModelEfficientNetB0_fvs) + the G3 geometry branch.
+
+    Depthwise-separable MBConv blocks with squeeze-and-excitation gating, ending
+    in a 1x1 conv to 1280 channels before pooling. By far the smallest backbone
+    of the family (~5.3M parameters), which makes this the cheapest run of the
+    three -- useful when GPU time is the binding constraint.
+
+    Note: setting `classifier = nn.Identity()` also removes EfficientNet's own
+    dropout layer. That is what ModelEfficientNetB0_fvs does, and it is
+    reproduced here so the two runs stay comparable -- but it does mean this
+    model has no regularization at all, which matters given the ~10x train/val
+    gap already visible in the logs.
+    """
+
+    def __init__(self, in_instances, in_channels=3, geo_hidden=64, geo_feat_dim=128,
+                 num_fourier_bands=4, use_film=True, film_rank=16,
+                 out_dim=101, fusion_seed=None):
+        super().__init__()
+        self.in_instances = in_instances
+
+        # ---------- Image branch: copied verbatim from ModelEfficientNetB0_fvs ----------
+        self.base_model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
+        self.base_model.features[0][0] = nn.Conv2d(in_channels, 32, kernel_size=3,
+                                                   stride=2, padding=1, bias=False)
+        self.base_model.classifier = nn.Identity()
+        backbone_out_features = 1280
+
+        # ---------- Geometry branch: identical to the G3 configuration ----------
+        self.geo_features = GeometryFeatures(num_fourier_bands=num_fourier_bands)
+        self.geo_encoder = nn.Sequential(
+            nn.Linear(self.geo_features.out_dim, geo_hidden),
+            nn.LeakyReLU(0.1),
+            nn.Linear(geo_hidden, geo_feat_dim),
+            nn.LeakyReLU(0.1),
+        )
+        self.film = (LowRankFiLM(geo_feat_dim, backbone_out_features, rank=film_rank)
+                     if use_film else None)
+
+        # ---------- Fusion + head: copied verbatim from ModelEfficientNetB0_fvs ----------
+        if fusion_seed is not None:
+            torch.manual_seed(fusion_seed)
+        self.fusion = nn.Sequential(
+            nn.Linear(backbone_out_features + geo_feat_dim, 1024),
+            nn.LeakyReLU(0.1),
+        )
+        self.prediction = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.LeakyReLU(0.1),
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.1),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, out_dim),
+        )
+
+    def geometry_branch_parameters(self):
+        mods = [self.geo_encoder] + ([self.film] if self.film is not None else [])
+        return sum(p.numel() for m in mods for p in m.parameters())
+
+    def forward(self, *inputs):
+        fvs = inputs[0]
+        x0_n = _as_column(inputs[1])   # index 1 = 'x0', same convention as the baseline
+        dx = _as_column(inputs[2])
+        ch = _as_column(inputs[3])
+
+        fvs_features = self.base_model(fvs)                              # (B, 1280)
+        geo_features = self.geo_encoder(self.geo_features(x0_n, dx, ch))  # (B, 128)
+
+        if self.film is not None:
+            fvs_features = self.film(fvs_features, geo_features)
+
+        x = self.fusion(torch.cat((fvs_features, geo_features), dim=1))
+        return self.prediction(x)
+
+
+# ===========================================================================
+# 5. Self-test: rank-1 proof, parameter budget, shape check
 # ===========================================================================
 if __name__ == "__main__":
     torch.manual_seed(0)
@@ -350,27 +536,52 @@ if __name__ == "__main__":
     print(f"   max |difference| = {(actual - equivalent).abs().max():.3e}"
           "  -> no expressive power beyond Linear(1, 2048)\n")
 
-    # (b) parameter budget
+    # (b) geometry-branch ablation on the resnet50 backbone
     variants = {
         "G1 physics features only":   dict(num_fourier_bands=0, use_film=False),
         "G2 + Fourier encoding":      dict(num_fourier_bands=4, use_film=False),
         "G3 + low-rank FiLM (r=16)":  dict(num_fourier_bands=4, use_film=True),
     }
-    print(f"{'variant':<38}{'geo branch':>14}{'total':>12}{'vs baseline':>13}")
+    print(f"{'geometry branch (resnet50)':<38}{'geo branch':>14}{'total':>12}{'vs baseline':>13}")
     print(f"   {'ModelCNN_fvs (baseline)':<35}{n_baseline:>14,}{58.26:>11.2f}M{'1x':>13}")
     for name, cfg in variants.items():
         m = ModelCNN_fvs_v3_geo(in_instances, 3, **cfg).eval()
         with torch.no_grad():
             out = m(fvs, x0_n, dx, ch)
-        assert out.shape == (B, out_dim := 101), out.shape
+        assert out.shape == (B, 101), out.shape
         g = m.geometry_branch_parameters()
         tot = sum(p.numel() for p in m.parameters())
         print(f"   {name:<35}{g:>14,}{tot/1e6:>11.2f}M{n_baseline/g:>12.0f}x")
 
-    # (c) fusion / head shapes must match the baseline exactly
+    # (c) the three backbones, all with the same G3 geometry branch
+    print(f"\n{'G3 geometry branch, other backbones':<38}{'geo branch':>14}{'total':>12}"
+          f"{'backbone out':>14}")
+    backbones = [
+        ("resnet50", ModelCNN_fvs_v3_geo),
+        ("densenet121", ModelDenseNet121_fvs_geo),
+        ("efficientnet_b0", ModelEfficientNetB0_fvs_geo),
+    ]
+    for name, cls in backbones:
+        m = cls(in_instances, 3).eval()
+        with torch.no_grad():
+            out = m(fvs, x0_n, dx, ch)
+        assert out.shape == (B, 101), (name, out.shape)
+        g = m.geometry_branch_parameters()
+        tot = sum(p.numel() for p in m.parameters())
+        width = m.film.up.out_features // 2 if m.film is not None else None
+        print(f"   {name:<35}{g:>14,}{tot/1e6:>11.2f}M{width:>14}")
+
+    # (d) fusion / head shapes must match their model.py counterparts
     m = ModelCNN_fvs_v3_geo(in_instances, 3)
-    print(f"\nfusion      : {tuple(m.fusion.weight.shape)}   (baseline: (1024, 1128))")
-    print(f"head output : {tuple(m.prediction[-1].weight.shape)}   (baseline: (101, 128))")
+    print(f"\nresnet50        fusion {tuple(m.fusion.weight.shape)}"
+          f"   (ModelCNN_fvs: (1024, 1128), bare Linear)")
+    m = ModelDenseNet121_fvs_geo(in_instances, 3)
+    print(f"densenet121     fusion {tuple(m.fusion[0].weight.shape)}"
+          f"   (ModelDenseNet121_fvs: (1024, 1152))")
+    m = ModelEfficientNetB0_fvs_geo(in_instances, 3)
+    print(f"efficientnet_b0 fusion {tuple(m.fusion[0].weight.shape)}"
+          f"   (ModelEfficientNetB0_fvs: (1024, 1408))")
+    print(f"head output     {tuple(m.prediction[-1].weight.shape)}   (all: (101, 128))")
 
     # (d) every raw feature stays in [0, 1] over the whole 114-geometry grid
     gf = GeometryFeatures(num_fourier_bands=0)

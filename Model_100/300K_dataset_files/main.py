@@ -18,7 +18,8 @@ from model import (
     ModelCNN_fvs_v2_film,
     ModelCNN_fvs_v2_all_geo
 )
-from model_test_geo import ModelCNN_fvs_v3_geo
+from model_test_geo import ModelCNN_fvs_v3_geo, ModelDenseNet121_fvs_geo, ModelEfficientNetB0_fvs_geo
+
 from loss_fcns import RMSELoss
 
 # =====================================================================
@@ -83,7 +84,7 @@ def run_train():
     V2_all_geo = ModelCNN_fvs_v2_all_geo(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
     set_seed(SEED)
     V2_film = ModelCNN_fvs_v2_film(IN_INSTANCES, IN_CHANNELS, 16, 128, fusion_seed=SEED)
-    """
+    
     set_seed(SEED)
     V3_geo_G1 = ModelCNN_fvs_v3_geo(IN_INSTANCES, IN_CHANNELS, 64, 128,
                                     num_fourier_bands=0, use_film=False, fusion_seed=SEED)
@@ -93,6 +94,12 @@ def run_train():
     set_seed(SEED)
     V3_geo_G3 = ModelCNN_fvs_v3_geo(IN_INSTANCES, IN_CHANNELS, 64, 128,
                                     num_fourier_bands=4, use_film=True, fusion_seed=SEED)
+    """
+
+    set_seed(SEED)
+    Dense_geo = ModelDenseNet121_fvs_geo(IN_INSTANCES, IN_CHANNELS, 64, 128, fusion_seed=SEED)
+    set_seed(SEED)
+    Eff_geo = ModelEfficientNetB0_fvs_geo(IN_INSTANCES, IN_CHANNELS, 64, 128, fusion_seed=SEED)
 
     # Noise tests: std = 0.0 OK / 0.01 NO / 0.02 OK / 0.05 OK / 0.08 OK / 0.1 OK
     models = [
@@ -111,9 +118,12 @@ def run_train():
         # (V2_film, "ModelCNN_fvs_v2_film_No_Noise_5k_RMSELoss"),
         # (Resnet50_v2_conf1, "Resnet50_fvs_v2_32_128_5k_RMSELoss"),
 
-        (V3_geo_G1, "ModelCNN_fvs_v3_geo_G1_90k_RMSELoss"),
+        #(V3_geo_G1, "ModelCNN_fvs_v3_geo_G1_90k_RMSELoss"),
         # (V3_geo_G2, "ModelCNN_fvs_v3_geo_G2_90k_RMSELoss"),
-        (V3_geo_G3, "ModelCNN_fvs_v3_geo_G3_90k_RMSELoss"),
+        #(V3_geo_G3, "ModelCNN_fvs_v3_geo_G3_90k_RMSELoss"),
+
+        (Dense_geo, "ModelDenseNet121_fvs_geo_90k_RMSELoss"),
+        (Eff_geo, "ModelEfficientNetB0_fvs_geo_90k_RMSELoss"),
     ]
 
     for model, model_name in models:
