@@ -1,6 +1,7 @@
 import argparse
 import torch
 import torch.optim as optim
+import math
 
 from train import set_seed, train_model
 from test import run_test
@@ -36,6 +37,20 @@ SEED = 42  # !!! old value : 42
 IN_INSTANCES = ['fvs', 'x0', 'dx', 'Ch']
 IN_CHANNELS = 3
 
+TRAIN_RATIO = 0.8
+NUM_EPOCHS = 250
+EARLY_STOPPING  = 25
+BATCH_SIZE      = 64
+NUM_WORKERS = 4
+
+LEARNING_RATE   = 3e-4
+WEIGHT_DECAY    = 1e-4   # AdamW defaults to 1e-2 -> always set this explicitly
+
+COSINE_HORIZON  = 120    # horizon the LR schedule is actually designed for
+WARMUP_EPOCHS   = 5
+ETA_MIN         = 1e-6   # LR floor; the schedule stays flat here past COSINE_HORIZON
+MIN_DELTA_REL   = 1e-3   # an improvement must beat the best by >0.1% to reset patience
+
 # =====================================================================
 # TEST CONFIGURATION
 # =====================================================================
@@ -43,14 +58,13 @@ PTH_ROOT = "300K_dataset_files/PTH"                       # root folder containi
 TEST_DATA_FOLDER = "300K_dataset_files/testing_measured"  # contains "input" with the 3 real-field .mat files
 TEST_CASE = "measured"                 # "measured" (no target) or "synthetic" (target available)
 
-
 # =====================================================================
 # TRAIN MODE
 # =====================================================================
 def run_train():
     # data_folder = 'training_data_5K/dataset'  # 5K data
     data_folder = r'C:\Users\KINH\training_data\dataset2'  # 300K data
-    # !!! IMPORTANT : Only 90k data will be used (change to be done in Call_dataset.py)
+    # !!! IMPORTANT : 300k data will be used (change to be done in Call_dataset.py)
     # For faster training (1 day min - 2 days max)
 
     # !!!!! RESEED right before each construction so every model gets identical init
@@ -122,24 +136,39 @@ def run_train():
         # (V3_geo_G2, "ModelCNN_fvs_v3_geo_G2_90k_RMSELoss"),
         #(V3_geo_G3, "ModelCNN_fvs_v3_geo_G3_90k_RMSELoss"),
 
-        (Dense_geo, "ModelDenseNet121_fvs_geo_90k_RMSELoss"),
-        (Eff_geo, "ModelEfficientNetB0_fvs_geo_90k_RMSELoss"),
+        (Dense_geo, "ModelDenseNet121_fvs_geo_300k_RMSELoss"),
+        (Eff_geo, "ModelEfficientNetB0_fvs_geo_300k_RMSELoss"),
     ]
 
     for model, model_name in models:
-        optimizer = optim.Adam(model.parameters(), lr=0.0001)  # !!! old value lr = 0.0001
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+        # AdamW decouples weight decay from the adaptive step, unlike Adam which
+        # folds it into the gradient and divides it by sqrt(v_hat).
+        optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+
+        # Linear warmup, then cosine decay, CLAMPED flat at ETA_MIN past COSINE_HORIZON.
+        # CosineAnnealingLR on its own is periodic (period 2*T_max)
+        def _make_lr_lambda(warmup, horizon, floor_ratio):
+            def f(epoch):
+                if epoch < warmup:
+                    return 0.1 + 0.9 * epoch / warmup  # linear warmup: 0.1 -> 1.0
+                t = min(epoch - warmup, horizon - warmup) / (horizon - warmup)
+                return floor_ratio + (1.0 - floor_ratio) * 0.5 * (1.0 + math.cos(math.pi * t))
+
+            return f
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, _make_lr_lambda(WARMUP_EPOCHS, COSINE_HORIZON, ETA_MIN / LEARNING_RATE))
 
         hyperparams = [
             RMSELoss(),  # loss function
             optimizer,  # optimizer bound to this model's parameters
             scheduler,  # LR scheduler bound to the optimizer above
-            0.8,  # train_ratio
-            8,  # batch_size  !!! old value : 8
-            200,  # num_epochs  !!! old value : 200
-            4,  # num_workers  !!! old value : 4
+            TRAIN_RATIO,  # train_ratio
+            BATCH_SIZE,  # batch_size  !!! old value : 8
+            NUM_EPOCHS,  # num_epochs  !!! old value : 200
+            NUM_WORKERS,  # num_workers  !!! old value : 4
             999999,  # best_error (initial value)
-            45,  # early_stopping (0 = disabled)  !!! old value : 45
+            EARLY_STOPPING,  # early_stopping (0 = disabled)  !!! old value : 45
         ]
 
         print(f"BEGIN TRAINING OF [{model_name}] 90K WITHOUT noise V3 -----------------")
@@ -150,11 +179,13 @@ def run_train():
             in_channels=IN_CHANNELS,
             model=model,
             model_name=model_name,
-            log_path="300K_dataset_files/log/90K_RMSELoss_No_Noise/log_geo_model_test_v3.csv",
+            log_path="300K_dataset_files/log/300K_RMSELoss_No_Noise/log_300k_v1.csv",
             add_noise=False,
             noise_std=0.01,
             hyperparams=hyperparams,
             log_dir="300K_dataset_files/runs",
+            min_delta_rel=MIN_DELTA_REL,
+            resume=True,
         )
         print(f"END TRAINING OF [{model_name}] 90K WITHOUT noise V3 -----------------")
 

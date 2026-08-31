@@ -32,6 +32,11 @@ elif torch.cuda.is_available():
 else:
     device = torch.device("cpu")  # CPU fallback
 
+# FOR NOW : Input shape is fixed (3, 76, 191), so cuDNN can benchmark the conv algorithms once and reuse the winner for the whole run. Free speedup when shapes never change.
+torch.backends.cudnn.benchmark = True
+
+CKPT_DIR = "300K_dataset_files/PTH"
+
 # --- Program reproducbility Setup ---
 def set_seed(seed):
     """Seed torch/cuda/numpy/random, and return a dedicated torch.Generator for reproducible DataLoader shuffling."""
@@ -54,7 +59,8 @@ def seed_worker(worker_id):
 
 # --- Logging function ---
 def log_epoch_to_csv(log_path, run_id, model_name, criterion, run_started_at, epoch, num_epochs,
-                      train_loss, val_loss, is_best, learning_rate,
+                      train_loss, val_loss, val_rmse_pooled, val_rmse_per_sample,
+                      is_best, learning_rate,
                       epoch_duration_sec, num_params, batch_size, seed):
     log_parent_dir = os.path.dirname(log_path)
     if log_parent_dir:
@@ -65,19 +71,23 @@ def log_epoch_to_csv(log_path, run_id, model_name, criterion, run_started_at, ep
         if not file_exists:
             writer.writerow([
                 "run_id", "model_name", "criterion", "run_started_at", "epoch", "epoch_timestamp",
-                "train_loss", "val_loss", "is_best", "learning_rate",
+                "train_loss", "val_loss", "val_rmse_pooled", "val_rmse_per_sample",
+                "is_best", "learning_rate",
                 "epoch_duration_sec", "num_params", "batch_size", "seed"
             ])
         writer.writerow([
             run_id, model_name, criterion, run_started_at, f"{epoch + 1}/{num_epochs}",
             datetime.now(TAIWAN_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-            f"{train_loss:.6f}", f"{val_loss:.6f}", is_best, f"{learning_rate:.8f}",
+            f"{train_loss:.6f}", f"{val_loss:.6f}",
+            f"{val_rmse_pooled:.6f}", f"{val_rmse_per_sample:.6f}",
+            is_best, f"{learning_rate:.8f}",
             f"{epoch_duration_sec:.2f}", num_params, batch_size, seed
         ])
 
 
 def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
-                add_noise, noise_std, hyperparams, log_path, log_dir):
+                add_noise, noise_std, hyperparams, log_path, log_dir,
+                min_delta_rel=1e-3, resume=True):
     """
     Run one full training + validation loop for a single model configuration.
     Call this once per model/config to launch several trainings back to back (main.py file)
@@ -135,6 +145,12 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
     # --- Move the model to the target device here, so the caller doesn't have to remember to ---
     model = model.to(device)
 
+    # --- Mixed precision: fp16 for convs/matmuls on Tensor Cores, fp32 elsewhere.
+    #     GradScaler multiplies the loss before backward so small gradients do not
+    #     flush to zero in fp16, then unscales before the optimizer step. ---
+    use_amp = (device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+
     # --- Run identifiers, all timestamped in Taiwan local time ---
     run_started_at = datetime.now(TAIWAN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     run_id = f"{model_name}_{datetime.now(TAIWAN_TZ).strftime('%Y%m%d_%H%M%S')}"
@@ -170,91 +186,169 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
         num_workers=num_workers,
         worker_init_fn=seed_worker,  # Ensures reproducible random augmentation across DataLoader workers.
         generator=g,  # Ensures reproducible batch shuffling
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=(num_workers > 0),  # workers survive between epochs; on Windows a respawn costs several seconds each
+        prefetch_factor=4,                     # each worker stays 4 batches ahead of the GPU
+        drop_last=True,                        # a last batch of size 1 would break BatchNorm
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=(num_workers > 0),
+        prefetch_factor=4,
     )
 
-    # --- TensorBoard: this run's own subfolder, so parallel/sequential runs never overwrite each other ---
+    # --- Resume: the checkpoint is keyed on model_name (stable), NOT on run_id
+    #     (timestamped), otherwise a restarted process could never find it. ---
+    os.makedirs(CKPT_DIR, exist_ok=True)
+    ckpt_path = os.path.join(CKPT_DIR, f"last_{model_name}.pth")
+    start_epoch = 0
+    epochs_without_improvement = 0
+    resumed = False
+
+    if resume and os.path.exists(ckpt_path):
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt["model"])
+        optimizer.load_state_dict(ckpt["optimizer"])
+        scheduler.load_state_dict(ckpt["scheduler"])
+        scaler.load_state_dict(ckpt["scaler"])
+        start_epoch = ckpt["epoch"] + 1
+        best_error = ckpt["best_error"]
+        epochs_without_improvement = ckpt["epochs_without_improvement"]
+        run_id = ckpt["run_id"]                  # keep logging into the same run
+        run_started_at = ckpt["run_started_at"]
+        resumed = True
+        print(f"[{run_id}] RESUMED at epoch {start_epoch}, best_error={best_error:.6f}")
+
+    # --- TensorBoard: this run's own subfolder. Never wipe it when resuming. ---
     run_log_dir = os.path.join(log_dir, run_id)
-    if os.path.exists(run_log_dir):
+    if os.path.exists(run_log_dir) and not resumed:
         shutil.rmtree(run_log_dir)
-    os.makedirs(run_log_dir)
+    os.makedirs(run_log_dir, exist_ok=True)
     writer = SummaryWriter(run_log_dir)
 
-    epochs_without_improvement = 0
-    print(f"[{run_id}] Early stopping: {'disabled' if early_stopping == 0 else f'patience={early_stopping} epochs'}")
+    print(f"[{run_id}] Early stopping: "
+          f"{'disabled' if early_stopping == 0 else f'patience={early_stopping}, min_delta={min_delta_rel:.1e}'}")
 
-    for epoch in tqdm(range(num_epochs), desc=run_id):
+    for epoch in tqdm(range(start_epoch, num_epochs), desc=run_id):
         epoch_start_time = time.time()  # for csv loging
 
         # --- Training ---
         model.train()
-        train_loss = 0
+        train_loss_sum = torch.zeros((), device=device)  # accumulate on GPU: calling
+        n_batches = 0  # .item() every step forces a sync
         for batch in tqdm(train_loader, leave=False):
-            # Unpack all inputs and targets
             *all_inputs, targets = batch
+            all_inputs = [inp.to(device, non_blocking=True) for inp in all_inputs]
+            targets = targets.to(device, non_blocking=True)
 
-            # Move everything to device
-            all_inputs = [inp.to(device) for inp in all_inputs]
-            targets = targets.to(device)
-            optimizer.zero_grad()
-            # Pass all inputs to the model
-            outputs = model(*all_inputs)
+            optimizer.zero_grad(set_to_none=True)
+            with torch.amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
+                outputs = model(*all_inputs)
+            # Loss kept in fp32 on purpose: squared errors here are ~1e-5, subnormal in
+            # fp16 (min normal = 6.1e-5), and RMSE's gradient scales as 1/(2*RMSE) so it
+            # amplifies exactly as the model converges.
+            loss = criterion(outputs.float(), targets)
 
-            loss = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)  # gradients must be unscaled before clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            scaler.step(optimizer)
+            scaler.update()
 
-        train_loss /= len(train_loader)
+            train_loss_sum += loss.detach()
+            n_batches += 1
+
+        train_loss = (train_loss_sum / n_batches).item()
         writer.add_scalar("Loss/Train", train_loss, epoch)
 
         # --- Validation ---
         model.eval()
-        val_loss = 0
+        val_loss_sum = torch.zeros((), device=device)  # legacy metric, batch-size dependent
+        n_val_batches = 0
+        sse = torch.zeros((), device=device)  # sum of squared errors
+        n_elem = 0  # element count -> pooled RMSE
+        per_sample_sum = torch.zeros((), device=device)  # sum of per-sample RMSE (paper Eq. 5)
+        n_samples = 0
+
         with torch.no_grad():
             for batch in tqdm(val_loader, leave=False):
-                # Unpack all inputs and targets
                 *all_inputs, targets = batch
-                # Move everything to device
-                all_inputs = [inp.to(device) for inp in all_inputs]
-                targets = targets.to(device)
-                # Pass all inputs to the model
-                predicts = model(*all_inputs)
-                loss = criterion(predicts, targets)
-                val_loss += loss.item()
-        val_loss /= len(val_loader)
-        writer.add_scalar("Loss/Validation", val_loss, epoch)
+                all_inputs = [inp.to(device, non_blocking=True) for inp in all_inputs]
+                targets = targets.to(device, non_blocking=True)
 
-        is_best = val_loss < best_error
+                with torch.amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
+                    predicts = model(*all_inputs)
+                predicts = predicts.float()
+
+                val_loss_sum += criterion(predicts, targets)
+                n_val_batches += 1
+
+                se = (predicts - targets) ** 2
+                sse += se.sum()
+                n_elem += targets.numel()
+                per_sample_sum += torch.sqrt(se.mean(dim=1)).sum()
+                n_samples += targets.size(0)
+
+        # mean of batch-RMSE: kept only so the column stays readable next to old logs.
+        # It is biased low (Jensen) and the bias depends on batch_size, so a bs=8 value
+        # is NOT comparable to a bs=64 one.
+        val_loss = (val_loss_sum / n_val_batches).item()
+        val_rmse_pooled = torch.sqrt(sse / n_elem).item()  # batch-size independent
+        val_rmse_per_sample = (per_sample_sum / n_samples).item()  # matches Eq. (5)
+
+        writer.add_scalar("Loss/Validation", val_loss, epoch)
+        writer.add_scalar("RMSE/pooled", val_rmse_pooled, epoch)
+        writer.add_scalar("RMSE/per_sample", val_rmse_per_sample, epoch)
+
+        # Model selection and early stopping run on the pooled RMSE: it is the only one
+        # of the three that does not shift when batch_size changes. min_delta_rel stops
+        # noise-level improvements (~0.04%) from resetting the patience counter forever.
+        is_best = val_rmse_pooled < best_error * (1.0 - min_delta_rel)
         if is_best:
-            best_error = val_loss
+            best_error = val_rmse_pooled
             epochs_without_improvement = 0
-            os.makedirs("300K_dataset_files/PTH", exist_ok=True)
-            torch.save(model.state_dict(), f"300K_dataset_files/PTH/saved_best_model_{run_id}.pth")
-            print(f"[{run_id}] Save best model, error", val_loss)
+            torch.save(model.state_dict(),
+                       os.path.join(CKPT_DIR, f"saved_best_model_{run_id}.pth"))
+            print(f"[{run_id}] Save best model, pooled RMSE = {val_rmse_pooled:.6f}")
         else:
             epochs_without_improvement += 1
 
         scheduler.step()
         epoch_duration = time.time() - epoch_start_time
-        print(f"[{run_id}] Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, "
-              f"LR: {scheduler.get_last_lr()[0]:.6e}, Time: {epoch_duration:.1f}s")
+        print(f"[{run_id}] Epoch [{epoch + 1}/{num_epochs}] | Train: {train_loss:.4f}, "
+              f"Val: {val_loss:.4f}, Pooled RMSE: {val_rmse_pooled:.4f}, "
+              f"LR: {scheduler.get_last_lr()[0]:.6e}, Time: {epoch_duration:.1f}s | "
+              f"patience {epochs_without_improvement}/{early_stopping}")
 
         # --- Log CSV: one line per epoch, shared file across all runs ---
         log_epoch_to_csv(
             log_path=log_path, run_id=run_id, model_name=model_name, criterion=criterion.__class__.__name__,
             run_started_at=run_started_at, epoch=epoch, num_epochs=num_epochs,
-            train_loss=train_loss, val_loss=val_loss, is_best=is_best,
+            train_loss=train_loss, val_loss=val_loss,
+            val_rmse_pooled=val_rmse_pooled, val_rmse_per_sample=val_rmse_per_sample,
+            is_best=is_best,
             learning_rate=scheduler.get_last_lr()[0], epoch_duration_sec=epoch_duration,
             num_params=num_params, batch_size=batch_size, seed=seed
         )
+
+        # --- Resume checkpoint: written EVERY epoch and overwritten. A 20-hour run
+        #     must not be lost to a power cut. Cost: one state_dict write per epoch. ---
+        torch.save({
+            "epoch": epoch,
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
+            "scaler": scaler.state_dict(),
+            "best_error": best_error,
+            "epochs_without_improvement": epochs_without_improvement,
+            "run_id": run_id,
+            "run_started_at": run_started_at,
+        }, ckpt_path)
+
         if is_best:
             with torch.no_grad():  # No need to create a graph, so we use torch.no_grad() to save GPU ressources
                 idx = 0
@@ -267,7 +361,7 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
                     # Forward pass with all inputs
                     predict = model(*all_inputs)
 
-                    if idx < 40:
+                    if idx < 30:
                         input_fvs = all_inputs[0].squeeze(0).cpu().detach() if len(all_inputs) > 0 else None
                         input_x0 = all_inputs[1].flatten().cpu().detach() if len(all_inputs) > 1 else None
                         input_dx = all_inputs[2].flatten().cpu().detach() if len(all_inputs) > 2 else None
