@@ -37,6 +37,43 @@ SEED = 42  # !!! old value : 42
 IN_INSTANCES = ['fvs', 'x0', 'dx', 'Ch']
 IN_CHANNELS = 3
 
+# =====================================================================
+# DATA AUGMENTATION  (training set only; validation stays clean)
+# =====================================================================
+#   ("gaussian", noise_std)
+#       Additive noise on the amplitude, redrawn every epoch. Dataset size unchanged.
+#
+#   ("mask", mask_number, mask_min, mask_max)
+#       Band-limiting mask. The frequency axis runs 5 -> 80 Hz over the 76 rows of the
+#       FVS image. Two cut-offs are drawn per masked variant:
+#           f_low  ~ U(5, mask_min)      rows with f <= f_low  are hidden
+#           f_high ~ U(mask_max, 80)     rows with f >= f_high are hidden
+#       The network only sees the open band (f_low, f_high); (mask_min, mask_max) always
+#       survives. Hidden cells hold -1.0, outside the valid range [0, 1], so the network
+#       reads "hidden, infer me" and not "amplitude = 0 at this frequency".
+#
+#       !!! MULTIPLIES THE DATASET: mask_number masked variants per .mat file, plus one
+#       pristine variant (no noise, no mask). ("mask", 2, ...) -> 3 samples per file, so
+#       epochs are 3x longer. Lower MAX_FILES in Call_dataset.py to compensate.
+#
+# Pick one:
+#   ADD_NOISE = None                                            # clean,      dataset x1
+#   ADD_NOISE = [("gaussian", 0.02)]                            # noise only, dataset x1
+#   ADD_NOISE = [("mask", 2, 15.0, 60.0)]                       # mask only,  dataset x3
+#   ADD_NOISE = [("gaussian", 0.02), ("mask", 2, 15.0, 60.0)]   # both,       dataset x3
+ADD_NOISE = [("gaussian", 0.02), ("mask", 2, 15.0, 60.0)]
+
+# Validation: keep None so the val loss stays clean, deterministic and comparable.
+VAL_ADD_NOISE = None
+
+# Append a binary channel to the FVS image: 1 = measured, 0 = hidden.
+# !!! NOT an "ignore these pixels" flag. The loss is never masked and the target stays the
+# FULL Vs profile for every variant; this only tells the network WHERE data is missing.
+# !!! Existing .pth were trained with 3 channels -> set False to reload them.
+RETURN_MASK_CHANNEL = True
+
+MODEL_IN_CHANNELS = IN_CHANNELS + (1 if RETURN_MASK_CHANNEL else 0)
+
 TRAIN_RATIO = 0.8
 NUM_EPOCHS = 250
 EARLY_STOPPING  = 25
@@ -111,9 +148,9 @@ def run_train():
     """
 
     set_seed(SEED)
-    Dense_geo = ModelDenseNet121_fvs_geo(IN_INSTANCES, IN_CHANNELS, 64, 128, fusion_seed=SEED)
+    Dense_geo = ModelDenseNet121_fvs_geo(IN_INSTANCES, MODEL_IN_CHANNELS, 64, 128, fusion_seed=SEED)
     set_seed(SEED)
-    Eff_geo = ModelEfficientNetB0_fvs_geo(IN_INSTANCES, IN_CHANNELS, 64, 128, fusion_seed=SEED)
+    Eff_geo = ModelEfficientNetB0_fvs_geo(IN_INSTANCES, MODEL_IN_CHANNELS, 64, 128, fusion_seed=SEED)
 
     # Noise tests: std = 0.0 OK / 0.01 NO / 0.02 OK / 0.05 OK / 0.08 OK / 0.1 OK
     models = [
@@ -171,7 +208,7 @@ def run_train():
             EARLY_STOPPING,  # early_stopping (0 = disabled)  !!! old value : 45
         ]
 
-        print(f"BEGIN TRAINING OF [{model_name}] 90K WITHOUT noise V3 -----------------")
+        print(f"BEGIN TRAINING OF [{model_name}] -----------------")
         train_model(
             seed=SEED,
             data_folder=data_folder,
@@ -180,14 +217,15 @@ def run_train():
             model=model,
             model_name=model_name,
             log_path="300K_dataset_files/log/300K_RMSELoss_No_Noise/log_300k_v1.csv",
-            add_noise=False,
-            noise_std=0.01,
+            add_noise=ADD_NOISE,
+            val_add_noise=VAL_ADD_NOISE,
+            return_mask_channel=RETURN_MASK_CHANNEL,
             hyperparams=hyperparams,
             log_dir="300K_dataset_files/runs",
             min_delta_rel=MIN_DELTA_REL,
             resume=True,
         )
-        print(f"END TRAINING OF [{model_name}] 90K WITHOUT noise V3 -----------------")
+        print(f"END TRAINING OF [{model_name}] -----------------")
 
 
 # =====================================================================

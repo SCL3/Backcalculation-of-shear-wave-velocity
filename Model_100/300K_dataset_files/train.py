@@ -86,8 +86,9 @@ def log_epoch_to_csv(log_path, run_id, model_name, criterion, run_started_at, ep
 
 
 def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
-                add_noise, noise_std, hyperparams, log_path, log_dir,
-                min_delta_rel=1e-3, resume=True):
+                add_noise, hyperparams, log_path, log_dir,
+                min_delta_rel=1e-3, resume=True,
+                val_add_noise=None, return_mask_channel=False):
     """
     Run one full training + validation loop for a single model configuration.
     Call this once per model/config to launch several trainings back to back (main.py file)
@@ -108,10 +109,19 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
         Free-text label for this run, used in the run_id, the CSV "model_name" column, and the checkpoint filename.
     log_path : str
         Path to the CSV file that accumulates one row per epoch, shared across all runs/models.
-    add_noise : bool
-        Whether to add Gaussian noise augmentation to the training set only (validation always stays clean/deterministic).
-    noise_std : float
-        Standard deviation of the Gaussian noise added when add_noise is True.
+    add_noise : None, or a list of augmentation specs, applied to the TRAINING set only
+            ("gaussian", noise_std)                    additive noise, redrawn every epoch,
+                                                       does NOT change the dataset size
+            ("mask", mask_number, mask_min, mask_max)  band-limiting mask, MULTIPLIES the
+                                                       dataset by mask_number (+1 pristine)
+        Either, both, or None. See Call_dataset.py.
+    val_add_noise : same format, default None
+        Augmentation for the VALIDATION set. Keep None so the val loss stays clean,
+        deterministic and comparable across runs.
+    return_mask_channel : bool, default False
+        Append a binary channel (1 = measured, 0 = hidden) to the FVS image. The model must
+        then be built with in_channels + 1 channels. NOT an "ignore" flag: the loss is never
+        masked and the target stays the full Vs profile for every variant.
     hyperparams : list
         [criterion, optimizer, scheduler, train_ratio, batch_size, num_epochs, num_workers, best_error, early_stopping]
         (see the inline comments where this list is unpacked below for what each entry means).
@@ -159,25 +169,39 @@ def train_model(seed, data_folder, in_instances, in_channels, model, model_name,
     # !!! Two separate dataset instances (train & val), so data augmentation can differ between them
     train_dataset_raw = MyDataset(
         in_instances, in_channels,
-        os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output100'), # Adapted to Kinh 150K dataset
-        add_noise=add_noise, noise_std=noise_std)
-    # !!! IMPORTANT : This code will call 90k data. To modify the value, go to Call_dataset.py
+        os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output100'),
+        add_noise=add_noise, return_mask_channel=return_mask_channel)
+    # !!! The number of .mat FILES is capped by MAX_FILES in Call_dataset.py, and the mask
+    # MULTIPLIES it: ("mask", 2, ...) -> 3 samples per file (2 masked + 1 pristine).
 
     val_dataset_raw = MyDataset(
         in_instances, in_channels,
-        os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output100'), # Adapted to Kinh 150K dataset
-        add_noise=False)  # !!! validation must always stay clean/deterministic
+        os.path.join(data_folder, 'input'), os.path.join(data_folder, 'output100'),
+        add_noise=val_add_noise,  # !!! None by default: validation stays clean/deterministic
+        return_mask_channel=return_mask_channel)
 
-    # --- Split on indices instead of random_split (shared between both instances) so train/val cover the same files ---
-    total_size = len(train_dataset_raw)
-    train_size = int(total_size * train_ratio)
+    print(f"[{run_id}] Train augmentation: {train_dataset_raw.desc}")
+    print(f"[{run_id}] Val   augmentation: {val_dataset_raw.desc}")
 
-    indices = torch.randperm(total_size, generator=g).tolist()
-    train_indices = indices[:train_size]
-    val_indices = indices[train_size:]
+    # --- Split by FILE, never by sample index ---
+    # !!! CRITICAL with the mask: file i produces several variants that all share the SAME
+    # Vs profile (same output CSV). Splitting on sample indices would scatter them across
+    # train and val, so the model would be validated on profiles it has already been
+    # trained on -> optimistic val loss and broken early stopping. With no mask
+    # (1 variant per file) this is strictly equivalent to the previous split.
+    n_files = train_dataset_raw.n_base_files
+    n_train_files = int(n_files * train_ratio)
+
+    file_perm = torch.randperm(n_files, generator=g).tolist()
+    train_indices = train_dataset_raw.indices_for_files(file_perm[:n_train_files])
+    val_indices = val_dataset_raw.indices_for_files(file_perm[n_train_files:])
 
     train_dataset = Subset(train_dataset_raw, train_indices)
     val_dataset = Subset(val_dataset_raw, val_indices)
+
+    print(f"[{run_id}] Files: {n_train_files} train / {n_files - n_train_files} val | "
+          f"Samples: {len(train_indices)} train ({train_dataset_raw.n_variants}/file)"
+          f" / {len(val_indices)} val ({val_dataset_raw.n_variants}/file)")
 
     train_loader = DataLoader(
         train_dataset,
@@ -418,8 +442,7 @@ if __name__ == "__main__":
                         in_channels=3,
                         input_dir=os.path.join(data_folder, 'input'),
                         output_dir=os.path.join(data_folder, 'output100'), # Adapted to Kinh 150K dataset
-                        add_noise=False,
-                        noise_std=0.00)
+                        add_noise=None)
     sample = dataset[0]
     fvs = sample[0]  # shape (3, H, W): [frequency, phase_velocity, amplitude]
 
